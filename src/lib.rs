@@ -193,6 +193,13 @@ pub struct ValueDisplay<'a> {
     indent_size: usize,
 }
 
+enum LocalValue {
+    DictRef(Rc<RefCell<BTreeMap<String, Value>>>),
+    ListRef(Rc<RefCell<Vec<Value>>>),
+    Owned(Value),
+}
+
+
 /// Parse a bencode data structure from a stream.
 ///
 /// If you expect the stream to contain a certain type, see the [`load_dict`] and [`load_list`]
@@ -210,22 +217,6 @@ pub struct ValueDisplay<'a> {
 /// [`Value::Bytes`]: enum.Value.html#variant.Bytes
 /// [`ParserError`]: enum.ParserError.html
 pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
-    enum LocalValue {
-        DictRef(Rc<RefCell<BTreeMap<String, Value>>>),
-        ListRef(Rc<RefCell<Vec<Value>>>),
-        Owned(Value),
-    }
-
-    impl LocalValue {
-        fn to_owned(&self) -> Value {
-            match self {
-                Self::DictRef(r) => Value::Dict(r.borrow().clone()),
-                Self::ListRef(r) => Value::List(r.borrow().clone()),
-                Self::Owned(v) => v.clone(),
-            }
-        }
-    }
-
     let file_size = stream.seek(SeekFrom::End(0))?;
     stream.seek(SeekFrom::Start(0))?;
 
@@ -1368,6 +1359,16 @@ impl<'a> ValueDisplay<'a> {
     pub fn indent_size(mut self, size: usize) -> Self {
         self.indent_size = size;
         self
+    }
+}
+
+impl LocalValue {
+    fn to_owned(&self) -> Value {
+        match self {
+            Self::DictRef(r) => Value::Dict(r.borrow().clone()),
+            Self::ListRef(r) => Value::List(r.borrow().clone()),
+            Self::Owned(v) => v.clone(),
+        }
     }
 }
 
