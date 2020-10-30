@@ -90,13 +90,6 @@ pub enum Error {
     ///
     /// This can be caused by not properly closing an integer, list or dict.
     Eof,
-
-    #[doc(hidden)]
-    StackUnderflow,
-    #[doc(hidden)]
-    UnexpectedState,
-    /// The integer string is way too big.
-    BigInt,
 }
 
 /// An error from the [`Value::traverse`] method.
@@ -317,7 +310,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                 if c == Token::End.into() {
                     buf_chars.next();
                     buf_index += 1;
-                    state = next_state.pop().ok_or(Error::StackUnderflow)?;
+                    state = next_state.pop().unwrap();
                 } else {
                     if buf_str.len() == 0 {
                         state = State::Str;
@@ -411,20 +404,20 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
 
             // Process current dict value as dict
             State::DictValDict => {
-                let dict = dict_stack.pop().ok_or(Error::StackUnderflow)?;
+                let dict = dict_stack.pop().unwrap();
 
                 *val_stack.last_mut().unwrap() = Some(LocalValue::DictRef(dict));
-                key_stack.pop().ok_or(Error::StackUnderflow)?;
-                val_stack.pop().ok_or(Error::StackUnderflow)?;
+                key_stack.pop().unwrap();
+                val_stack.pop().unwrap();
                 state = State::DictFlush;
             }
 
             // Process current dict value as list
             State::DictValList => {
-                let list = list_stack.pop().ok_or(Error::StackUnderflow)?;
+                let list = list_stack.pop().unwrap();
 
                 *val_stack.last_mut().unwrap() = Some(LocalValue::ListRef(list));
-                item_stack.pop().ok_or(Error::StackUnderflow)?;
+                item_stack.pop().unwrap();
                 state = State::DictFlush;
             }
 
@@ -439,7 +432,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                 if c == Token::End.into() {
                     buf_chars.next();
                     buf_index += 1;
-                    state = next_state.pop().ok_or(Error::StackUnderflow)?;
+                    state = next_state.pop().unwrap();
                 } else {
                     state = State::DictKey;
                 }
@@ -454,7 +447,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     Ok(Token::End) => {
                         buf_chars.next();
                         buf_index += 1;
-                        state = next_state.pop().ok_or(Error::StackUnderflow)?;
+                        state = next_state.pop().unwrap();
                     }
 
                     // Dict value
@@ -530,7 +523,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
 
             // Process current list value as dict
             State::ListValDict => {
-                let dict = dict_stack.pop().ok_or(Error::StackUnderflow)?.borrow().clone();
+                let dict = dict_stack.pop().unwrap().borrow().clone();
 
                 *item_stack.last_mut().unwrap() = Some(LocalValue::Owned(Value::Dict(dict)));
                 key_stack.pop();
@@ -541,7 +534,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
 
             // Process current list value as list
             State::ListValList => {
-                let list = list_stack.pop().ok_or(Error::StackUnderflow)?.borrow().clone();
+                let list = list_stack.pop().unwrap().borrow().clone();
 
                 *item_stack.last_mut().unwrap() = Some(LocalValue::Owned(Value::List(list)));
                 item_stack.pop();
@@ -559,7 +552,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                 if c == Token::End.into() {
                     buf_chars.next();
                     buf_index += 1;
-                    state = next_state.pop().ok_or(Error::StackUnderflow)?;
+                    state = next_state.pop().unwrap();
                 } else {
                     state = State::ListVal;
                 }
@@ -593,7 +586,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     } else {
                         buf_str.extend(buf_chars.by_ref().take(buf_str_size as usize));
                         buf_index += buf_str_size as usize;
-                        state = next_state.pop().ok_or(Error::StackUnderflow)?;
+                        state = next_state.pop().unwrap();
                     }
                 }
             }
@@ -609,7 +602,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     buf_str.extend(buf_chars.by_ref().take(buf_str_remainder as usize));
                     buf_index += buf_str_remainder as usize;
                     buf_str_remainder = 0;
-                    state = next_state.pop().ok_or(Error::StackUnderflow)?;
+                    state = next_state.pop().unwrap();
                 }
             }
 
@@ -634,14 +627,14 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     }
 
                     if buf_int.len() > MAX_INT_BUF {
-                        return Err(Error::BigInt);
+                        return Err(Error::Syntax(real_index as usize, "Integer string too big".into()));
                     }
 
-                    state = next_state.pop().ok_or(Error::StackUnderflow)?;
+                    state = next_state.pop().unwrap();
                 }
             }
 
-            _ => return Err(Error::UnexpectedState),
+            _ => unreachable!(),
         }
     }
 
@@ -667,18 +660,18 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
         State::RootValStr => root = Some(str_or_bytes(buf_str)),
 
         State::RootValDict => {
-            let dict = dict_stack.pop().ok_or(Error::StackUnderflow)?.borrow().clone();
+            let dict = dict_stack.pop().unwrap().borrow().clone();
 
             root = Some(Value::Dict(dict));
         }
 
         State::RootValList => {
-            let list = list_stack.pop().ok_or(Error::StackUnderflow)?.borrow().clone();
+            let list = list_stack.pop().unwrap().borrow().clone();
 
             root = Some(Value::List(list));
         }
 
-        _ => return Err(Error::UnexpectedState),
+        _ => unreachable!(),
     }
 
     Ok(root.unwrap())
@@ -1489,9 +1482,6 @@ impl fmt::Display for Error {
             Error::Empty => write!(f, "Empty file"),
             Error::Syntax(n, s) => write!(f, "Syntax error at {}: {}", n + 1, s),
             Error::Eof => write!(f, "Unexpected end of file reached"),
-            Error::StackUnderflow => write!(f, "Stack underflow"),
-            Error::UnexpectedState => write!(f, "Unexpected state in main loop"),
-            Error::BigInt => write!(f, "Integer too big"),
         }
     }
 }
