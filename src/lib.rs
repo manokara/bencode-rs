@@ -72,7 +72,7 @@ pub enum TraverseAction {
 ///
 /// [`load`]: fn.load.html
 #[derive(Debug)]
-pub enum Error {
+pub enum ParserError {
     /// `(inner_error)`
     ///
     /// An IO error has occured.
@@ -88,7 +88,8 @@ pub enum Error {
 
     /// Reached end of stream while trying to parse something.
     ///
-    /// This can be caused by not properly closing an integer, list or dict.
+    /// This can be caused by a missing 'e' token, or the stream simply cuts in the middle of the
+    /// structure.
     Eof,
 }
 
@@ -190,12 +191,12 @@ pub struct ValueDisplay<'a> {
 /// # Errors
 ///
 /// There are many ways this function can fail. It will fail if the stream is empty, if there are
-/// syntax errors or an integer string is way too big. See [`Error`].
+/// syntax errors or an integer string is way too big. See [`ParserError`].
 ///
 /// [`Value::Str`]: enum.Value.html#variant.Str
 /// [`Value::Bytes`]: enum.Value.html#variant.Bytes
-/// [`Error`]: enum.Error.html
-pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
+/// [`ParserError`]: enum.ParserError.html
+pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
     enum LocalValue {
         DictRef(Rc<RefCell<BTreeMap<String, Value>>>),
         ListRef(Rc<RefCell<Vec<Value>>>),
@@ -216,7 +217,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
     stream.seek(SeekFrom::Start(0))?;
 
     if file_size == 0 {
-        return Err(Error::Empty);
+        return Err(ParserError::Empty);
     }
 
     let mut file_index = 0u64;
@@ -291,7 +292,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
 
                     // End, Colon
                     Ok(a) => return Err(
-                        Error::Syntax(real_index as usize,
+                        ParserError::Syntax(real_index as usize,
                                       format!("Unexpected '{}' token", Into::<u8>::into(a) as char))
                     ),
                 }
@@ -317,7 +318,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                         next_state.push(State::DictKey);
                     } else {
                         let key = String::from_utf8(buf_str.clone())
-                            .map_err(|_| Error::Syntax(real_index as usize, "Dict key must be a utf8 string".into()))?;
+                            .map_err(|_| ParserError::Syntax(real_index as usize, "Dict key must be a utf8 string".into()))?;
                         *key_stack.last_mut().unwrap() = Some(key);
                         buf_str.clear();
                         state = State::DictVal;
@@ -327,7 +328,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
 
             // Read dict value
             State::DictVal => {
-                let c = **buf_chars.peek().ok_or(Error::Eof)?;
+                let c = **buf_chars.peek().ok_or(ParserError::Eof)?;
 
                 match c.try_into() {
                     // Dict value
@@ -374,7 +375,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     }
 
                     // Colon, End
-                    _ => return Err(Error::Syntax(real_index as usize, format!("Unexpected '{}' token", c))),
+                    _ => return Err(ParserError::Syntax(real_index as usize, format!("Unexpected '{}' token", c))),
                 }
             }
 
@@ -391,10 +392,10 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                 let c = *buf_chars.next().unwrap();
 
                 if c != Token::End.into() {
-                    return Err(Error::Syntax(real_index as usize, "Expected 'e' token".into()));
+                    return Err(ParserError::Syntax(real_index as usize, "Expected 'e' token".into()));
                 }
 
-                let val = buf_int.parse::<i64>().map_err(|_| Error::Syntax(real_index as usize, "Invalid integer".into()))?;
+                let val = buf_int.parse::<i64>().map_err(|_| ParserError::Syntax(real_index as usize, "Invalid integer".into()))?;
                 *val_stack.last_mut().unwrap() = Some(LocalValue::Owned(Value::Int(val)));
                 buf_int.clear();
                 buf_index += 1;
@@ -427,7 +428,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                 let val = val_stack.last().unwrap().as_ref().unwrap().to_owned();
                 dict_stack.last_mut().unwrap().borrow_mut().insert(key, val);
 
-                let c = **buf_chars.peek().ok_or(Error::Eof)?;
+                let c = **buf_chars.peek().ok_or(ParserError::Eof)?;
 
                 if c == Token::End.into() {
                     buf_chars.next();
@@ -440,7 +441,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
 
             // List value
             State::ListVal => {
-                let c = **buf_chars.peek().ok_or(Error::Eof)?;
+                let c = **buf_chars.peek().ok_or(ParserError::Eof)?;
 
                 match c.try_into() {
                     // End of list
@@ -493,7 +494,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     }
 
                     // Colon
-                    _ => return Err(Error::Syntax(real_index as usize, "Unexpected ':' token".into())),
+                    _ => return Err(ParserError::Syntax(real_index as usize, "Unexpected ':' token".into())),
                 }
             }
 
@@ -510,10 +511,10 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                 let c = *buf_chars.next().unwrap();
 
                 if c != Token::End.into() {
-                    return Err(Error::Syntax(real_index as usize, "Expected 'e' token".into()));
+                    return Err(ParserError::Syntax(real_index as usize, "Expected 'e' token".into()));
                 }
 
-                let val = buf_int.parse::<i64>().map_err(|_| Error::Syntax(real_index as usize, "Invalid integer".into()))?;
+                let val = buf_int.parse::<i64>().map_err(|_| ParserError::Syntax(real_index as usize, "Invalid integer".into()))?;
 
                 *item_stack.last_mut().unwrap() = Some(LocalValue::Owned(Value::Int(val)));
                 buf_int.clear();
@@ -566,13 +567,13 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     state = State::Int;
                     next_state.push(State::Str);
                 } else {
-                    let c = *buf_chars.next().ok_or(Error::Eof)?;
+                    let c = *buf_chars.next().ok_or(ParserError::Eof)?;
 
                     if c != Token::Colon.into() {
-                        return Err(Error::Syntax(real_index as usize, "Expected ':'".into()));
+                        return Err(ParserError::Syntax(real_index as usize, "Expected ':'".into()));
                     }
 
-                    let buf_str_size = buf_int.parse::<u64>().map_err(|_| Error::Syntax(real_index as usize, "Invalid integer".into()))?;
+                    let buf_str_size = buf_int.parse::<u64>().map_err(|_| ParserError::Syntax(real_index as usize, "Invalid integer".into()))?;
                     buf_int.clear();
                     buf_index += 1;
 
@@ -610,12 +611,12 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
             State::Int => {
                 const CHARS: &[char] = &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-'];
 
-                let c = **buf_chars.peek().ok_or(Error::Eof)? as char;
+                let c = **buf_chars.peek().ok_or(ParserError::Eof)? as char;
 
                 if CHARS.contains(&c) {
                     // Only allow minus at the beginning
                     if c == '-' && buf_int.len() > 0 {
-                        return Err(Error::Syntax(real_index as usize, "Unexpected '-'".into()));
+                        return Err(ParserError::Syntax(real_index as usize, "Unexpected '-'".into()));
                     }
 
                     buf_int.push(c);
@@ -623,11 +624,11 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
                     buf_index += 1;
                 } else {
                     if buf_int.len() == 0 {
-                        return Err(Error::Syntax(real_index as usize, "Empty integer".into()));
+                        return Err(ParserError::Syntax(real_index as usize, "Empty integer".into()));
                     }
 
                     if buf_int.len() > MAX_INT_BUF {
-                        return Err(Error::Syntax(real_index as usize, "Integer string too big".into()));
+                        return Err(ParserError::Syntax(real_index as usize, "Integer string too big".into()));
                     }
 
                     state = next_state.pop().unwrap();
@@ -639,7 +640,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
     }
 
     if next_state.len() > 0 {
-        return Err(Error::Eof);
+        return Err(ParserError::Eof);
     }
 
     match state {
@@ -648,11 +649,11 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
             let c = *buf_chars.next().unwrap();
 
             if c != Token::End.into() {
-                return Err(Error::Syntax(file_size as usize - 1, "Expected 'e' token".into()));
+                return Err(ParserError::Syntax(file_size as usize - 1, "Expected 'e' token".into()));
             }
 
             let val = buf_int.parse::<i64>()
-                .map_err(|_| Error::Syntax(file_index as usize + buf_index,
+                .map_err(|_| ParserError::Syntax(file_index as usize + buf_index,
                                            "Invalid integer".into()))?;
             root = Some(Value::Int(val));
         }
@@ -682,7 +683,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
 /// This is a helper function that wraps the str in a Cursor and calls [`load`].
 ///
 /// [`load`]: fn.load.html
-pub fn load_str(s: &str) -> Result<Value, Error> {
+pub fn load_str(s: &str) -> Result<Value, ParserError> {
     let mut cursor = Cursor::new(s);
     load(&mut cursor)
 }
@@ -1475,13 +1476,13 @@ impl fmt::Display for Value {
     }
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for ParserError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "IO Error: {}", e),
-            Error::Empty => write!(f, "Empty file"),
-            Error::Syntax(n, s) => write!(f, "Syntax error at {}: {}", n + 1, s),
-            Error::Eof => write!(f, "Unexpected end of file reached"),
+            ParserError::Io(e) => write!(f, "IO Error: {}", e),
+            ParserError::Empty => write!(f, "Empty file"),
+            ParserError::Syntax(n, s) => write!(f, "Syntax error at {}: {}", n + 1, s),
+            ParserError::Eof => write!(f, "Unexpected end of file reached"),
         }
     }
 }
@@ -1500,7 +1501,7 @@ impl fmt::Display for SelectError {
     }
 }
 
-impl From<IoError> for Error {
+impl From<IoError> for ParserError {
     fn from(e: IoError) -> Self {
         Self::Io(e)
     }
