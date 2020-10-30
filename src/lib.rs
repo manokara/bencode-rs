@@ -53,53 +53,133 @@ enum TraverseState {
     Done,
 }
 
+/// Describes an action to be taken when traversing a Value container.
+///
+/// See [`Value::traverse`](enum.Value.html#method.traverse).
 #[derive(Debug)]
 pub enum TraverseAction {
+    /// Enter the current value if it is a container.
     Enter,
+    /// Goes back to the parent container of the current Value.
     Exit,
+    /// Keep going through items in the container.
     Continue,
+    /// Stop traversing and return the current value.
     Stop,
 }
 
+/// An error from the [`load`] function.
+///
+/// [`load`]: fn.load.html
 #[derive(Debug)]
 pub enum Error {
+    /// `(inner_error)`
+    ///
+    /// An IO error has occured.
     Io(IoError),
+
+    /// Stream was empty.
     Empty,
+
+    /// `(position, reason)`
+    ///
+    /// There was a syntax error in the stream.
     Syntax(usize, String),
+
+    /// Reached end of stream while trying to parse something.
+    ///
+    /// This can be caused by not properly closing an integer, list or dict.
     Eof,
+
+    #[doc(hidden)]
     StackUnderflow,
+    #[doc(hidden)]
     UnexpectedState,
+    /// The integer string is way too big.
     BigInt,
 }
 
+/// An error from the [`Value::traverse`] method.
+///
+/// [`Value::traverse`]: enum.Value.html#method.traverse
 #[derive(Debug)]
 pub enum TraverseError<E = ()> {
+    /// `(context)`
+    ///
+    /// Tried to enter a value in the current context that was not a container.
     NotContainer(String),
+
+    /// Tried to go back to the parent container, but we were at the root.
     AtRoot,
+
+    /// `(context)`
+    ///
+    /// Reached the end of the current container.
     End(String),
+
+    /// `(context, error)`
+    ///
+    /// An error occurred processing a value and the traversal was aborted.
     Aborted(String, E),
 }
 
+/// An error from the [`Value::select`] method.
+///
+/// [`Value::select`]: enum.Value.html#method.select
 #[derive(Debug)]
 pub enum SelectError {
+    /// `(context, key)`
+    ///
+    /// Key does not exist in this context.
     Key(String, String),
+
+    /// `(context, index)`
+    ///
+    /// Index is out of bounds for this context.
     Index(String, usize),
+
+    /// `(context)`
+    ///
+    /// Context does not take keys.
     Subscriptable(String),
+
+    /// `(context)`
+    ///
+    /// Context does not take indexes.
     Indexable(String),
+
+    /// `(context)`
+    ///
+    /// Context is not a container and can't be selected into.
     Primitive(String),
+
+    /// `(context, pos, reason)`
+    ///
+    /// Error processing selector syntax.
     Syntax(String, usize, String),
+
+    /// Reached end of selector while trying to parse it. e.g. didn't close a bracket.
     End,
 }
 
+/// A bencode value
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Value {
+    /// Integer
     Int(i64),
+    /// UTF-8 string
     Str(String),
+    /// Raw bytestring
     Bytes(Vec<u8>),
+    /// Dictionary
     Dict(BTreeMap<String, Value>),
+    /// List
     List(Vec<Value>),
 }
 
+/// A helper struct for recursively displaying [`Value`]s.
+///
+/// [`Value`]: enum.Value.html
 pub struct ValueDisplay<'a> {
     root: &'a Value,
     max_depth: usize,
@@ -109,6 +189,19 @@ pub struct ValueDisplay<'a> {
     indent_size: usize,
 }
 
+/// Parse a bencode data structure from a stream.
+///
+/// The parser will try to convert bytestrings to UTF-8 and return a [`Value::Str`] variant if the
+/// conversion is succesful, otherwise the value will be [`Value::Bytes`].
+///
+/// # Errors
+///
+/// There are many ways this function can fail. It will fail if the stream is empty, if there are
+/// syntax errors or an integer string is way too big. See [`Error`].
+///
+/// [`Value::Str`]: enum.Value.html#variant.Str
+/// [`Value::Bytes`]: enum.Value.html#variant.Bytes
+/// [`Error`]: enum.Error.html
 pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
     enum LocalValue {
         DictRef(Rc<RefCell<BTreeMap<String, Value>>>),
@@ -218,9 +311,6 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
             }
 
             // Read dict key or end the dict if it's empty
-            // Internally dict keys can be anything since BTreeMap's K type is Value, but here we only
-            // consider them to be strings.
-            // FIXME: Deny non-string tokens?
             State::DictKey => {
                 let c = **buf_chars.peek().unwrap();
 
@@ -594,12 +684,17 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, Error> {
     Ok(root.unwrap())
 }
 
+/// Parse a bencode data structure from a string.
+///
+/// This is a helper function that wraps the str in a Cursor and calls [`load`].
+///
+/// [`load`]: fn.load.html
 pub fn load_str(s: &str) -> Result<Value, Error> {
     let mut cursor = Cursor::new(s);
     load(&mut cursor)
 }
 
-/// Try to convert a raw buffer to utf8 and return the appropriate Value
+/// Try to convert a raw buffer to utf8 and return the appropriate Value.
 fn str_or_bytes(vec: Vec<u8>) -> Value {
     match String::from_utf8(vec) {
         Ok(s) => Value::Str(s),
@@ -633,12 +728,12 @@ impl Value {
         matches!(self, Value::Int(_))
     }
 
-    /// Is the current value a str?
+    /// Is the current value a string?
     pub fn is_str(&self) -> bool {
         matches!(self, Value::Str(_))
     }
 
-    /// Is the current value a bytes?
+    /// Is the current value a byte sequence?
     pub fn is_bytes(&self) -> bool {
         matches!(self, Value::Bytes(_))
     }
@@ -658,9 +753,14 @@ impl Value {
         self.is_dict() || self.is_list()
     }
 
+    /// Get the length of the inner value.
+    ///
+    /// - dicts and lists: the amount of elements in them.
+    /// - strs and bytes: their length
+    /// - int: 0
     pub fn len(&self) -> usize {
         match self {
-            Value::Int(i) => 0, // TODO: Use log10 to tell how big the number is?
+            Value::Int(_) => 0,
             Value::Str(s) => s.len(),
             Value::Bytes(b) => b.len(),
             Value::Dict(m) => m.len(),
@@ -668,6 +768,7 @@ impl Value {
         }
     }
 
+    /// Try to convert this value to its inner i64
     pub fn to_i64(&self) -> Option<i64> {
         if let Value::Int(v) = self {
             Some(*v)
@@ -676,6 +777,7 @@ impl Value {
         }
     }
 
+    /// Try to convert this value to a string slice
     pub fn to_str(&self) -> Option<&str> {
         if let Value::Str(s) = self {
             Some(s.as_str())
@@ -684,6 +786,7 @@ impl Value {
         }
     }
 
+    /// Try to convert this value to a byte slice
     pub fn to_bytes(&self) -> Option<&[u8]> {
         if let Value::Bytes(v) = self {
             Some(v.as_slice())
@@ -692,6 +795,7 @@ impl Value {
         }
     }
 
+    /// Try to convert this value to a map reference
     pub fn to_map(&self) -> Option<&BTreeMap<String, Value>> {
         if let Value::Dict(map) = self {
             Some(map)
@@ -700,6 +804,7 @@ impl Value {
         }
     }
 
+    /// Try to convert this value to a vec reference
     pub fn to_vec(&self) -> Option<&Vec<Value>> {
         if let Value::List(v) = self {
             Some(v)
@@ -708,6 +813,7 @@ impl Value {
         }
     }
 
+    /// Get a short name for the current type
     pub fn value_type(value: &Self) -> &'static str {
         match value {
             Self::Int(_) => "int",
@@ -718,7 +824,8 @@ impl Value {
         }
     }
 
-    /// Returns the internal display struct that can be configured with a builder pattern.
+    /// Returns the internal display struct, which can be configured.
+    ///
     /// See [`ValueDisplay`](struct.ValueDisplay.html).
     pub fn display<'a>(&'a self) -> ValueDisplay<'a> {
         ValueDisplay::new(self)
@@ -728,29 +835,26 @@ impl Value {
     ///
     /// # Syntax
     ///
-    /// - Selecting with key: `.keyname`. `keyname` can be be anything and also can contain spaces, but
-    /// if it has dots or an open bracket (`[`), put a `\\` before them.
-    /// - Selecting with an index: `[n]`, where N is in `[0; n)`.
+    /// - Selecting with key: `.keyname`.
+    /// - Selecting with an index: `[n]`, where `n` is >= 0.
     ///
-    /// An empty selector will return this Value.
+    /// `keyname` can be be anything and also can contain spaces, but if it has dots or an open
+    /// bracket (`[`), put a `\` before them. An empty selector will return this value.
     ///
     /// ## Examples
     ///
     /// - `.bar`: Selects key `bar` in the root.
-    /// - `.buz.fghij[1]`: Selects key `buz` (a dict) in the root, then key `fghij` (a list),
-    /// then index number 1.
+    /// - `.buz.fghij[1]`: Selects key `buz` (dict) in the root (dict), then key `fghij` (list), then
+    /// index number 1.
+    /// - `[2].foo.bar`: Selects index 2 (dict) in the root (list), then key `foo` (dict) then key `bar` .
     ///
     /// # Errors
     ///
-    /// - `SelectError::Primitive(context)`: This Value is not a container.
-    /// - `SelectError::Indexable(context)`: The current Value is not indexable (is a dict).
-    /// - `SelectError::Subscriptable(context)`: The current Value is not subscriptable (is a list).
-    /// - `SelectError::Key(context, key)`: The current dict does not have key `key`.
-    /// - `SelectError::Index(context, number)`: `number` is out of bounds for the current list.
-    /// - `SelectError::Syntax(where, why)`: There was an error parsing the selector string.
-    /// - `SelectError::End`: Reached end of selector while trying to parse a key or index
+    /// See [`SelectError`]'s documentation. The `context` in its variants has the same meaning as
+    /// described in [`Value::traverse`].
     ///
-    /// `context` will contain the selector up until where the error occurred.
+    /// [`SelectError`]: enum.SelectError.html
+    /// [`Value::traverse`]: enum.Value.html#method.traverse
     pub fn select(&self, mut selector: &str) -> Result<&Value, SelectError> {
         if selector.is_empty() {
             return Ok(self);
@@ -761,11 +865,7 @@ impl Value {
         let mut last_key = String::new();
         let mut last_index = 0;
 
-        let result = self.traverse(|key, index, _root, value, _context| {
-            #[cfg(test)]
-            eprintln!("{:?} -- {:?}, {:?}, {:?}, {:?} | {:?}, {:?}, {:?}",
-                      selector, key, index, value, _context, is_dict, last_key, last_index);
-
+        let result = self.traverse(|key, index, _root, _value, _context| {
             if let Some(current_key) = key {
                 let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
                 last_key.replace_range(0.., &key);
@@ -799,12 +899,6 @@ impl Value {
             Ok(TraverseAction::Enter)
         });
 
-        #[cfg(test)]
-        if result.is_ok() {
-            eprintln!("All is good: {:?}", result);
-            eprintln!("----------------------------");
-        }
-
         result.map_err(|e| match e {
             TraverseError::NotContainer(ctx) => SelectError::Primitive(ctx),
             TraverseError::Aborted(_, e) => e,
@@ -817,12 +911,61 @@ impl Value {
         })
     }
 
-    /// Traverse a container Value (dict or list) returning a reference Value.
+    /// Traverses a container Value (dict or list) and returns a reference to another Value inside
+    /// it.
+    ///
+    /// This function is not recursive by default. Instead, the whole process is controlled by calls
+    /// to the closure `f` on each child value that returns a [`TraverseAction`] describing what to
+    /// do next.
+    ///
+    /// # Closure
+    ///
+    /// **Arguments**
+    ///
+    /// - `key`: An Option that contains the key of the current value if the parent container is a dict.
+    /// - `index`: An Option that contains the index of current value if the parent container is a list.
+    /// - `parent`: The container value that is being iterated on.
+    /// - `value`: The current value held by the parent's iterator.
+    /// - `context`: A string describing the parent container using the [`select`] syntax. An empty
+    /// context means the parent is the root value (`self`).
+    ///
+    /// For each element of the current container, the closure is called with these arguments and
+    /// expects a [`TraverseAction`]:
+    ///
+    /// - `TraverseAction::Enter`: Go inside of the current value if it is a container. Will throw
+    /// an error otherwise.
+    /// - `TraverseAction::Exit`: Goes to the parent container, if there is one. If you're at the
+    /// root value (`self`), this will throw an error.
+    /// - `TraverseAction::Stop`: Stops the process and returns the current value.
+    /// - `TraverseAction::Continue`: Go to the next item in the current container.
+    ///
+    /// `key` and `index` can be used for determining the type of the current container other than
+    /// [`Value::is_dict`] or [`Value::is_list`]. `key` being Some means the current container is a
+    /// dict, while `index` being Some means it is a list.
+    ///
+    /// However, if both are None, it means the current container has no more items. You only have
+    /// one option here: return `TraverseAction::Exit` to go back to the parent container and
+    /// process the rest of its elements. Any other action will throw the `TraverseError::End`
+    /// error.
+    ///
+    /// # Errors
+    ///
+    /// If there are no more items in the current container and nothing was done by the closure as
+    /// described above, this function will return `TraverseError::End`.
+    ///
+    /// See [`TraverseError`] for information on other types of errors. The `context` in its
+    /// variants has the same meaning as the closure argument.
+    ///
+    /// [`TraverseAction`]: enum.TraverseAction.html
+    /// [`select`]: #method.select
+    /// [`Value::is_dict`]: enum.Value.html#method.is_dict
+    /// [`Value::is_list`]: enum.Value.html#method.is_dict
+    /// [`TraverseError`]: enum.TraverseError.html
     pub fn traverse<'a, F, E>(&'a self, mut f: F) -> Result<&'a Value, TraverseError<E>>
     where
         F: FnMut(Option<&str>, Option<usize>, &'a Value, &'a Value, &str) -> Result<TraverseAction, E>,
     {
-        if !self.is_dict() && !self.is_list() {
+        if !self.is_container() {
             return Err(TraverseError::NotContainer("<root>".into()));
         }
 
@@ -1096,6 +1239,13 @@ impl Value {
 }
 
 impl<'a> ValueDisplay<'a> {
+    /// Creates a new ValueDisplay with default values.
+    ///
+    /// - max_depth: 5
+    /// - max_list_items: 10
+    /// - max_root_bytes: 32
+    /// - max_bytes: 10
+    /// - indent_size: 2
     pub fn new(root: &'a Value) -> Self {
         Self {
             root,
@@ -1107,26 +1257,37 @@ impl<'a> ValueDisplay<'a> {
         }
     }
 
+    /// Sets how far down the root value is going to be shown.
     pub fn max_depth(mut self, depth: usize) -> Self {
         self.max_depth = depth;
         self
     }
 
+    /// Sets the maximum number of items shown in a list.
+    ///
+    /// Excess items are truncated, followed by an ellipsis.
     pub fn max_list_items(mut self, max: usize) -> Self {
         self.max_list_items = max;
         self
     }
 
+    /// Sets how many bytes are shown if they're the root Value.
+    ///
+    /// Excess bytes are truncated, followed by an ellipsis.
     pub fn max_root_bytes(mut self, max: usize) -> Self {
         self.max_root_bytes = max;
         self
     }
 
+    /// Sets how many bytes are shown if they're inside a container.
+    ///
+    /// Excess bytes are truncated, followed by an ellipsis.
     pub fn max_bytes(mut self, max: usize) -> Self {
         self.max_bytes = max;
         self
     }
 
+    /// Sets the indentation size in spaces.
     pub fn indent_size(mut self, size: usize) -> Self {
         self.indent_size = size;
         self
