@@ -91,6 +91,16 @@ pub enum ParserError {
     /// This can be caused by a missing 'e' token, or the stream simply cuts in the middle of the
     /// structure.
     Eof,
+
+    /// The root value was not the one expected.
+    ///
+    /// This is only returned by the [`load_dict`] and [`load_list`] functions. Note that when using
+    /// these functions, this variant will used if there's anything other than "start structure"
+    /// token.
+    ///
+    /// [`load_dict`]: fn.load_dict.html
+    /// [`load_list`]: fn.load_list.html
+    UnexpectedRoot,
 }
 
 /// An error from the [`Value::traverse`] method.
@@ -185,14 +195,17 @@ pub struct ValueDisplay<'a> {
 
 /// Parse a bencode data structure from a stream.
 ///
-/// The parser will try to convert bytestrings to UTF-8 and return a [`Value::Str`] variant if the
-/// conversion is succesful, otherwise the value will be [`Value::Bytes`].
+/// If you expect the stream to contain a certain type, see the [`load_dict`] and [`load_list`]
+/// functions. The parser will try to convert bytestrings to UTF-8 and return a [`Value::Str`]
+/// variant if the conversion is succesful, otherwise the value will be [`Value::Bytes`].
 ///
 /// # Errors
 ///
 /// There are many ways this function can fail. It will fail if the stream is empty, if there are
 /// syntax errors or an integer string is way too big. See [`ParserError`].
 ///
+/// [`load_dict`]: fn.load_dict.html
+/// [`load_list`]: fn.load_list.html
 /// [`Value::Str`]: enum.Value.html#variant.Str
 /// [`Value::Bytes`]: enum.Value.html#variant.Bytes
 /// [`ParserError`]: enum.ParserError.html
@@ -686,6 +699,76 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
 pub fn load_str(s: &str) -> Result<Value, ParserError> {
     let mut cursor = Cursor::new(s);
     load(&mut cursor)
+}
+
+/// Parse a bencode stream expecting a dict as the root value.
+///
+/// If your application requires the root value to a be a dict and you want to avoid unnecessary
+/// allocations, this function will check if the first token in the stream is 'd' and then actually
+/// parse the stream.
+///
+/// # Errors
+///
+/// If the first character in the stream is not a 'd', we fail with `ParserError::UnexpectedRoot`.
+/// Other parsing errors may be returned following the check.
+pub fn load_dict(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
+    let mut buf = [0u8];
+
+    stream.read_exact(&mut buf)?;
+
+    match buf[0].try_into() {
+        Ok(Token::Dict) => {
+            stream.seek(SeekFrom::Start(0))?;
+            load(stream)
+        }
+
+        _ => Err(ParserError::UnexpectedRoot)
+    }
+}
+
+/// Parse a bencode string expecting a dict as the root value.
+///
+/// This is a helper function that wraps the str in a Cursor and calls [`load_dict`].
+///
+/// [`load_dict`]: fn.load_dict.html
+pub fn load_dict_str(s: &str) -> Result<Value, ParserError> {
+    let mut cursor = Cursor::new(s);
+    load_dict(&mut cursor)
+}
+
+/// Parse a bencode stream expecting a list as the root value.
+///
+/// If your application requires the root value to a be a list and you want to avoid unnecessary
+/// allocations, this function will check if the first token in the stream is 'l' and then actually
+/// parse the stream.
+///
+/// # Errors
+///
+/// If the first character in the stream is not a 'l', we fail with `ParserError::UnexpectedRoot`.
+/// Other parsing errors may be returned following the check.
+pub fn load_list(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
+    let mut buf = [0u8];
+
+    stream.read_exact(&mut buf)?;
+
+    match buf[0].try_into() {
+        Ok(Token::List) => {
+            stream.seek(SeekFrom::Start(0))?;
+            load(stream)
+        }
+
+        _ => Err(ParserError::UnexpectedRoot)
+    }
+}
+
+/// Parse a bencode string expecting a list as the root value.
+///
+/// This is a helper function that wraps the str in a Cursor and calls [`load_list`].
+///
+/// [`load_dict`]: fn.load_dict.html
+pub fn load_list_str(s: &str) -> Result<Value, ParserError> {
+    let mut cursor = Cursor::new(s);
+    load_list(&mut cursor)
 }
 
 /// Try to convert a raw buffer to utf8 and return the appropriate Value.
@@ -1483,6 +1566,7 @@ impl fmt::Display for ParserError {
             ParserError::Empty => write!(f, "Empty file"),
             ParserError::Syntax(n, s) => write!(f, "Syntax error at {}: {}", n + 1, s),
             ParserError::Eof => write!(f, "Unexpected end of file reached"),
+            ParserError::UnexpectedRoot => write!(f, "Unexpected root value"),
         }
     }
 }
@@ -1709,5 +1793,17 @@ mod tests {
         assert_eq!(dict.select(".buz.fghij[1]").unwrap(), &Value::Str("qrstuv".into()));
         assert_eq!(dict.select(".buz.fghij[2]").unwrap(), &Value::Dict(fghij_map));
         assert_eq!(dict.select(".buz.fghij[2].wxyz").unwrap(), &Value::Int(0));
+    }
+
+    #[test]
+    fn load_expect() {
+        use super::{load_dict_str, load_list_str};
+
+        assert_eq!(load_dict_str(LIST_NESTED).is_ok(), false);
+        assert_eq!(load_dict_str(LIST_VAL_INT).is_ok(), false);
+        assert_eq!(load_dict_str(LIST_VAL_STR).is_ok(), false);
+        assert_eq!(load_dict_str(LIST_VAL_STR).is_ok(), false);
+        assert_eq!(load_list_str(DICT_VAL_INT).is_ok(), false);
+        assert_eq!(load_list_str(DICT_MIXED).is_ok(), false);
     }
 }
