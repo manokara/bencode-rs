@@ -193,12 +193,24 @@ pub struct ValueDisplay<'a> {
     indent_size: usize,
 }
 
+/// An enum containing a valid accessor for a container value.
+///
+/// See [`Value::get`] and [`Value::get_mut`].
+///
+/// [`Value::get`]: enum.Value.html#method.get
+/// [`Value::get_mut`]: enum.Value.html#method.get_mut
+pub enum ValueAccessor<'a> {
+    /// Access with an index
+    Index(usize),
+    /// Access with a key
+    Key(&'a str),
+}
+
 enum LocalValue {
     DictRef(Rc<RefCell<BTreeMap<String, Value>>>),
     ListRef(Rc<RefCell<Vec<Value>>>),
     Owned(Value),
 }
-
 
 /// Parse a bencode data structure from a stream.
 ///
@@ -872,8 +884,26 @@ impl Value {
         }
     }
 
+    /// Try to convert this value to a mutable map reference
+    pub fn to_map_mut(&mut self) -> Option<&mut BTreeMap<String, Value>> {
+        if let Value::Dict(map) = self {
+            Some(map)
+        } else {
+            None
+        }
+    }
+
     /// Try to convert this value to a vec reference
     pub fn to_vec(&self) -> Option<&Vec<Value>> {
+        if let Value::List(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    /// Try to convert this value to a mutable vec reference
+    pub fn to_vec_mut(&mut self) -> Option<&mut Vec<Value>> {
         if let Value::List(v) = self {
             Some(v)
         } else {
@@ -897,6 +927,28 @@ impl Value {
     /// See [`ValueDisplay`](struct.ValueDisplay.html).
     pub fn display<'a>(&'a self) -> ValueDisplay<'a> {
         ValueDisplay::new(self)
+    }
+
+    /// Returns a reference to an item inside this value with an index or key.
+    ///
+    /// Return value will be None if the element does not exist in this container or if this value
+    /// is not a container. See also [`is_container`](#method.is_container).
+    pub fn get<'a, A>(&self, a: A) -> Option<&Value> where A: Into<ValueAccessor<'a>> {
+        match a.into() {
+            ValueAccessor::Index(n) => self.to_vec().and_then(|v| v.get(n)),
+            ValueAccessor::Key(s) => self.to_map().and_then(|m| m.get(s)),
+        }
+    }
+
+    /// Returns a mutable reference to an item inside this value with an index or a key.
+    ///
+    /// Return value will be None if the element does not exist in this container or if this value
+    /// is not a container. See also [`is_container`](#method.is_container).
+    pub fn get_mut<'a, A>(&mut self, a: A) -> Option<&mut Value> where A: Into<ValueAccessor<'a>> {
+        match a.into() {
+            ValueAccessor::Index(n) => self.to_vec_mut().and_then(|v| v.get_mut(n)),
+            ValueAccessor::Key(s) => self.to_map_mut().and_then(|m| m.get_mut(s)),
+        }
     }
 
     /// Select a value inside this one if it is a container (dict or list).
@@ -1372,6 +1424,7 @@ impl LocalValue {
     }
 }
 
+
 impl<'a> fmt::Display for ValueDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut indent = 0;
@@ -1631,6 +1684,18 @@ impl TryFrom<u8> for Token {
     }
 }
 
+impl<'a> From<usize> for ValueAccessor<'a> {
+    fn from(n: usize) -> Self {
+        ValueAccessor::Index(n)
+    }
+}
+
+impl<'a> From<&'a str> for ValueAccessor<'a> {
+    fn from(s: &'a str) -> Self {
+        ValueAccessor::Key(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{BTreeMap, Value};
@@ -1806,5 +1871,91 @@ mod tests {
         assert_eq!(load_dict_str(LIST_VAL_STR).is_ok(), false);
         assert_eq!(load_list_str(DICT_VAL_INT).is_ok(), false);
         assert_eq!(load_list_str(DICT_MIXED).is_ok(), false);
+    }
+
+    #[test]
+    fn value_get() {
+        let mut root_map = BTreeMap::new();
+        let mut buz_map = BTreeMap::new();
+        let mut fghij_map = BTreeMap::new();
+
+        fghij_map.insert("wxyz".into(), Value::Int(0));
+
+        let fghij_list = Value::List(vec![
+            Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map.clone()),
+        ]);
+        let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
+
+        buz_map.insert("abcde".into(), Value::Str("fghij".into()));
+        buz_map.insert("boz".into(), Value::Str("bez".into()));
+        buz_map.insert("fghij".into(), fghij_list.clone());
+        root_map.insert("foo".into(), Value::Int(0));
+        root_map.insert("bar".into(), Value::Int(1));
+        root_map.insert("baz".into(), Value::Int(2));
+        root_map.insert("buz".into(), Value::Dict(buz_map.clone()));
+        root_map.insert("zyx".into(), zyx_list);
+        let dict = Value::Dict(root_map);
+
+        //-------------------
+        assert_eq!(dict.get("foo"), Some(&Value::Int(0)));
+        assert_eq!(dict.get("bar"), Some(&Value::Int(1)));
+        assert_eq!(dict.get("baz"), Some(&Value::Int(2)));
+
+        let buz_abcde = dict.get("buz").and_then(|b| b.get("abcde"));
+        let buz_boz = dict.get("buz").and_then(|b| b.get("boz"));
+        let fghij_0 = dict.get("buz").and_then(|b| b.get("fghij")).and_then(|f| f.get(0));
+        let fghij_1 = dict.get("buz").and_then(|b| b.get("fghij")).and_then(|f| f.get(1));
+        let wxyz = dict.get("buz").and_then(|b| b.get("fghij")).and_then(|f| f.get(2))
+            .and_then(|m| m.get("wxyz"));
+        let zyx_0 = dict.get("zyx").and_then(|z| z.get(0));
+        let zyx_1 = dict.get("zyx").and_then(|z| z.get(1));
+        let zyx_2 = dict.get("zyx").and_then(|z| z.get(2));
+
+        assert_eq!(buz_abcde, Some(&Value::Str("fghij".into())));
+        assert_eq!(buz_boz, Some(&Value::Str("bez".into())));
+        assert_eq!(fghij_0, Some(&Value::Str("klmnop".into())));
+        assert_eq!(fghij_1, Some(&Value::Str("qrstuv".into())));
+        assert_eq!(wxyz, Some(&Value::Int(0)));
+        assert_eq!(zyx_0, Some(&Value::Int(0)));
+        assert_eq!(zyx_1, Some(&Value::Int(1)));
+        assert_eq!(zyx_2, Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn value_get_mut() {
+
+        let mut root_map = BTreeMap::new();
+        let mut buz_map = BTreeMap::new();
+        let mut fghij_map = BTreeMap::new();
+
+        fghij_map.insert("wxyz".into(), Value::Int(0));
+
+        let fghij_list = Value::List(vec![
+            Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map.clone()),
+        ]);
+        let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
+
+        buz_map.insert("abcde".into(), Value::Str("fghij".into()));
+        buz_map.insert("boz".into(), Value::Str("bez".into()));
+        buz_map.insert("fghij".into(), fghij_list.clone());
+        root_map.insert("foo".into(), Value::Int(0));
+        root_map.insert("bar".into(), Value::Int(1));
+        root_map.insert("baz".into(), Value::Int(2));
+        root_map.insert("buz".into(), Value::Dict(buz_map.clone()));
+        root_map.insert("zyx".into(), zyx_list);
+        let mut dict = Value::Dict(root_map);
+
+        *dict.get_mut("foo").unwrap() = Value::Int(9);
+        *dict.get_mut("bar").unwrap() = Value::Int(8);
+        *dict.get_mut("baz").unwrap() = Value::Int(7);
+        *dict.get_mut("buz").unwrap() = Value::Int(6);
+        *dict.get_mut("zyx").unwrap() = Value::Int(5);
+
+        assert_eq!(dict.get("foo").unwrap(), &Value::Int(9));
+        assert_eq!(dict.get("bar").unwrap(), &Value::Int(8));
+        assert_eq!(dict.get("baz").unwrap(), &Value::Int(7));
+        assert_eq!(dict.get("buz").unwrap(), &Value::Int(6));
+        assert_eq!(dict.get("buz").and_then(|b| b.get("abcde")), None);
+        assert_eq!(dict.get("buz").and_then(|b| b.get(0)), None);
     }
 }
