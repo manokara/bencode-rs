@@ -1089,48 +1089,38 @@ impl Value {
             return Err(TraverseError::NotContainer("<root>".into()));
         }
 
-        let mut state = TraverseState::Root;
         let mut next_state = Vec::new();
-        let mut dict_stack = Vec::new();
-        let mut list_stack = Vec::new();
         let mut context = String::new();
+        let mut value_stack = vec![self];
+        let mut keys_stack = self.to_map().map(|m| vec![m.keys()]).unwrap_or(Vec::new());
+        let mut index_stack = self.to_vec().map(|v| vec![(0..v.len()).into_iter()]).unwrap_or(Vec::new());
+        let mut state = if self.is_dict() { TraverseState::Dict } else { TraverseState::List };
         let mut value = None;
 
         while state != TraverseState::Done {
             match state {
-                TraverseState::Root => {
-                    if let Some(m) = self.to_map() {
-                        state = TraverseState::Dict;
-                        dict_stack.push((self, m.iter().enumerate().peekable()));
-                        next_state.push(TraverseState::Done);
-                    } else if let Some(v) = self.to_vec() {
-                        state = TraverseState::List;
-                        list_stack.push((self, v.iter().enumerate().peekable()));
-                        next_state.push(TraverseState::Done);
-                    }
-                }
-
                 TraverseState::Dict => {
-                    let (root, it) = dict_stack.last_mut().unwrap();
+                    let root = value_stack.last().unwrap();
+                    let it = keys_stack.last_mut().unwrap();
                     let next = it.next();
 
-                    if let Some((_i, (key, val))) = next {
-                        let action = f(Some(key.as_str()), None, root, val, &context)
+                    if let Some(key) = next {
+                        let key = key.as_str();
+                        let val = root.get(key).unwrap();
+                        let action = f(Some(key), None, root, val, &context)
                             .map_err(|e| TraverseError::Aborted(context.clone(), e))?;
 
                         match action {
                             TraverseAction::Enter => {
                                 context.extend(format!(".{}", key).chars());
 
-                                if val.is_dict() {
-                                    let map = val.to_map().unwrap();
-
-                                    dict_stack.push((val, map.iter().enumerate().peekable()));
+                                if let Some(m) = val.to_map() {
+                                    value_stack.push(val);
+                                    keys_stack.push(m.keys());
                                     next_state.push(TraverseState::Dict);
                                 } else if val.is_list() {
-                                    let vec = val.to_vec().unwrap();
-
-                                    list_stack.push((val, vec.iter().enumerate().peekable()));
+                                    value_stack.push(val);
+                                    index_stack.push((0..val.len()).into_iter());
                                     next_state.push(TraverseState::Dict);
                                     state = TraverseState::List;
                                 } else {
@@ -1147,7 +1137,8 @@ impl Value {
 
                                 // TODO: Check for possible escaped dots
                                 let key_pos = context.rfind('.').unwrap();
-                                let _ = dict_stack.pop().unwrap();
+                                let _ = keys_stack.pop().unwrap();
+                                let _ = value_stack.pop().unwrap();
                                 context.truncate(key_pos);
                                 state = next_state.pop().unwrap();
                             }
@@ -1171,7 +1162,8 @@ impl Value {
                                     return Err(TraverseError::AtRoot);
                                 }
 
-                                let _ = dict_stack.pop().unwrap();
+                                let _ = keys_stack.pop().unwrap();
+                                let _ = value_stack.pop().unwrap();
                                 state = next_state.pop().unwrap();
                             }
 
@@ -1181,10 +1173,12 @@ impl Value {
                 }
 
                 TraverseState::List => {
-                    let (root, it) = list_stack.last_mut().unwrap();
+                    let root = value_stack.last().unwrap();
+                    let it = index_stack.last_mut().unwrap();
                     let next = it.next();
 
-                    if let Some((index, val)) = next {
+                    if let Some(index) = next {
+                        let val = root.get(index).unwrap();
                         let action = f(None, Some(index), root, val, &context)
                             .map_err(|e| TraverseError::Aborted(context.clone(), e))?;
 
@@ -1192,12 +1186,14 @@ impl Value {
                             TraverseAction::Enter => {
                                 context.extend(format!("[{}]", index).chars());
 
-                                if let Some(map) = val.to_map() {
-                                    dict_stack.push((val, map.iter().enumerate().peekable()));
+                                if let Some(m) = val.to_map() {
+                                    value_stack.push(val);
+                                    keys_stack.push(m.keys());
                                     next_state.push(TraverseState::List);
                                     state = TraverseState::Dict;
                                 } else if let Some(vec) = val.to_vec() {
-                                    list_stack.push((val, vec.iter().enumerate().peekable()));
+                                    value_stack.push(val);
+                                    index_stack.push((0..vec.len()).into_iter());
                                     next_state.push(TraverseState::List);
                                 } else {
                                     return Err(TraverseError::NotContainer(context));
@@ -1213,7 +1209,8 @@ impl Value {
 
                                 // TODO: Check for possible escaped dots
                                 let key_pos = context.rfind('[').unwrap();
-                                let _ = list_stack.pop().unwrap();
+                                let _ = index_stack.pop().unwrap();
+                                let _ = value_stack.pop().unwrap();
                                 context.truncate(key_pos);
                                 state = next_state.pop().unwrap();
                             }
@@ -1237,7 +1234,8 @@ impl Value {
                                     return Err(TraverseError::AtRoot);
                                 }
 
-                                let _ = list_stack.pop().unwrap();
+                                let _ = index_stack.pop().unwrap();
+                                let _ = value_stack.pop().unwrap();
                                 state = next_state.pop().unwrap();
                             }
 
