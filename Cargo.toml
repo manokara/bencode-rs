@@ -1,8 +1,12 @@
 [package]
 name = "bencode"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Mark Nokalt <marknokalt@live.com>"]
+license = "MIT OR Apache-2.0"
+description = "Parser and API for working bencode data"
+keywords = ["parser", "parsing", "bencode"]
+repository = "https://github.com/manokara/bencode-rs"
+categories = ["parsing"]
 edition = "2018"
 
 [dependencies]
-
