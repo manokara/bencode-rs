@@ -144,16 +144,6 @@ pub enum SelectError {
 
     /// `(context)`
     ///
-    /// Context does not take keys.
-    Subscriptable(String),
-
-    /// `(context)`
-    ///
-    /// Context does not take indexes.
-    Indexable(String),
-
-    /// `(context)`
-    ///
     /// Context is not a container and can't be selected into.
     Primitive(String),
 
@@ -981,54 +971,36 @@ impl Value {
         }
 
         let full_selector = &selector[..];
-        let mut is_dict = false;
-        let mut last_key = String::new();
-        let mut last_index = 0;
+        let mut context = String::new();
+        let mut value = self;
 
-        let result = self.traverse(|key, index, _root, value, _context| {
-            is_dict = value.is_dict();
-
-            if let Some(current_key) = key {
+        loop {
+            if value.is_dict() {
                 let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
-                last_key.replace_range(0.., &key);
+                context.extend(format!(".{}", key).chars());
+                value = value.get(&key).ok_or(SelectError::Key(context.clone(), key))?;
 
-                if current_key == key {
-                    if sel.is_empty() {
-                        return Ok(TraverseAction::Stop);
-                    }
-
-                    selector = sel;
-                } else {
-                    return Ok(TraverseAction::Continue);
+                if sel.is_empty() {
+                    break;
                 }
-            } else if let Some(current_index) = index {
+
+                selector = sel;
+            } else if value.is_list() {
                 let (sel, index) = Self::parse_index_selector(selector, full_selector)?;
-                last_index = index;
+                context.extend(format!("[{}]", index).chars());
+                value = value.get(index).ok_or(SelectError::Index(context.clone(), index))?;
 
-                if current_index == index {
-                    if sel.is_empty() {
-                        return Ok(TraverseAction::Stop);
-                    }
-
-                    selector = sel;
-                } else {
-                    return Ok(TraverseAction::Continue);
+                if sel.is_empty() {
+                    break;
                 }
-            }
 
-            Ok(TraverseAction::Enter)
-        });
-
-        result.map_err(|e| match e {
-            TraverseError::NotContainer(ctx) => SelectError::Primitive(ctx),
-            TraverseError::Aborted(_, e) => e,
-            TraverseError::End(ctx) => if is_dict {
-                SelectError::Key(ctx, last_key)
+                selector = sel;
             } else {
-                SelectError::Index(ctx, last_index)
-            },
-            TraverseError::AtRoot => unreachable!(),
-        })
+                return Err(SelectError::Primitive(context));
+            }
+        }
+
+        Ok(value)
     }
 
     /// Selects a value inside this container and returns a mutable reference.
@@ -1669,8 +1641,6 @@ impl fmt::Display for SelectError {
         match self {
             SelectError::Key(ctx, key) => write!(f, "[{:?}] Unknown key '{}'", ctx, key),
             SelectError::Index(ctx, index) => write!(f, "[{:?}] Index {} out of bounds", ctx, index),
-            SelectError::Subscriptable(ctx) => write!(f, "[{:?}] Current value cannot be subscripted", ctx),
-            SelectError::Indexable(ctx) => write!(f, "[{:?}] Current value cannot be indexed", ctx),
             SelectError::Primitive(ctx) => write!(f, "[{:?}] Current value is not selectable!", ctx),
             SelectError::Syntax(ctx, pos, msg) => write!(f, "[{:?}] Syntax error at {}: {}", ctx, pos, msg),
             SelectError::End => write!(f, "Reached end of selector prematurely"),
