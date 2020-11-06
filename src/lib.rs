@@ -60,7 +60,7 @@ enum TraverseState {
 pub enum TraverseAction {
     /// Enter the current value if it is a container.
     Enter,
-    /// Goes back to the parent container of the current Value.
+    /// Goes to the parent container of the current container.
     Exit,
     /// Keep going through items in the container.
     Continue,
@@ -985,11 +985,12 @@ impl Value {
         let mut last_key = String::new();
         let mut last_index = 0;
 
-        let result = self.traverse(|key, index, _root, _value, _context| {
+        let result = self.traverse(|key, index, _root, value, _context| {
+            is_dict = value.is_dict();
+
             if let Some(current_key) = key {
                 let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
                 last_key.replace_range(0.., &key);
-                is_dict = true;
 
                 if current_key == key {
                     if sel.is_empty() {
@@ -1003,7 +1004,6 @@ impl Value {
             } else if let Some(current_index) = index {
                 let (sel, index) = Self::parse_index_selector(selector, full_selector)?;
                 last_index = index;
-                is_dict = false;
 
                 if current_index == index {
                     if sel.is_empty() {
@@ -1029,6 +1029,47 @@ impl Value {
             },
             TraverseError::AtRoot => unreachable!(),
         })
+    }
+
+    /// Selects a value inside this container and returns a mutable reference.
+    ///
+    /// See [`select`](#method.select).
+    pub fn select_mut(&mut self, mut selector: &str) -> Result<&mut Value, SelectError> {
+        if selector.is_empty() {
+            return Ok(self);
+        }
+
+        let full_selector = &selector[..];
+        let mut context = String::new();
+        let mut value = self;
+
+        loop {
+            if value.is_dict() {
+                let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
+                context.extend(format!(".{}", key).chars());
+                value = value.get_mut(&key).ok_or(SelectError::Key(context.clone(), key))?;
+
+                if sel.is_empty() {
+                    break;
+                }
+
+                selector = sel;
+            } else if value.is_list() {
+                let (sel, index) = Self::parse_index_selector(selector, full_selector)?;
+                context.extend(format!("[{}]", index).chars());
+                value = value.get_mut(index).ok_or(SelectError::Index(context.clone(), index))?;
+
+                if sel.is_empty() {
+                    break;
+                }
+
+                selector = sel;
+            } else {
+                return Err(SelectError::Primitive(context));
+            }
+        }
+
+        Ok(value)
     }
 
     /// Traverses a container Value (dict or list) and returns a reference to another Value inside
@@ -1093,7 +1134,7 @@ impl Value {
         let mut context = String::new();
         let mut value_stack = vec![self];
         let mut keys_stack = self.to_map().map(|m| vec![m.keys()]).unwrap_or(Vec::new());
-        let mut index_stack = self.to_vec().map(|v| vec![(0..v.len()).into_iter()]).unwrap_or(Vec::new());
+        let mut index_stack = self.to_vec().map(|v| vec![0..v.len()]).unwrap_or(Vec::new());
         let mut state = if self.is_dict() { TraverseState::Dict } else { TraverseState::List };
         let mut value = None;
 
@@ -1120,7 +1161,7 @@ impl Value {
                                     next_state.push(TraverseState::Dict);
                                 } else if val.is_list() {
                                     value_stack.push(val);
-                                    index_stack.push((0..val.len()).into_iter());
+                                    index_stack.push(0..val.len());
                                     next_state.push(TraverseState::Dict);
                                     state = TraverseState::List;
                                 } else {
@@ -1193,7 +1234,7 @@ impl Value {
                                     state = TraverseState::Dict;
                                 } else if let Some(vec) = val.to_vec() {
                                     value_stack.push(val);
-                                    index_stack.push((0..vec.len()).into_iter());
+                                    index_stack.push(0..vec.len());
                                     next_state.push(TraverseState::List);
                                 } else {
                                     return Err(TraverseError::NotContainer(context));
@@ -1694,6 +1735,12 @@ impl<'a> From<&'a str> for ValueAccessor<'a> {
     }
 }
 
+impl<'a> From<&'a String> for ValueAccessor<'a> {
+    fn from(s: &'a String) -> Self {
+        ValueAccessor::Key(s.as_str())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{BTreeMap, Value};
@@ -1955,5 +2002,57 @@ mod tests {
         assert_eq!(dict.get("buz").unwrap(), &Value::Int(6));
         assert_eq!(dict.get("buz").and_then(|b| b.get("abcde")), None);
         assert_eq!(dict.get("buz").and_then(|b| b.get(0)), None);
+    }
+
+    #[test]
+    fn select_mut_dict_simple() {
+        let mut map = BTreeMap::new();
+        map.insert("foo".into(), Value::Int(0));
+        map.insert("bar".into(), Value::Int(1));
+        map.insert("baz".into(), Value::Int(2));
+        let mut dict = Value::Dict(map);
+
+        *dict.select_mut(".foo").unwrap() = Value::Int(9);
+        *dict.select_mut(".bar").unwrap() = Value::Int(8);
+        *dict.select_mut(".baz").unwrap() = Value::Int(7);
+        assert_eq!(dict.get("foo").unwrap(), &Value::Int(9));
+        assert_eq!(dict.get("bar").unwrap(), &Value::Int(8));
+        assert_eq!(dict.get("baz").unwrap(), &Value::Int(7));
+    }
+
+    #[test]
+    fn select_mut_dict_mixed() {
+        let mut root_map = BTreeMap::new();
+        let mut buz_map = BTreeMap::new();
+        let mut fghij_map = BTreeMap::new();
+
+        fghij_map.insert("wxyz".into(), Value::Int(0));
+
+        let fghij_list = Value::List(vec![
+            Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map.clone()),
+        ]);
+        let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
+
+        buz_map.insert("abcde".into(), Value::Str("fghij".into()));
+        buz_map.insert("boz".into(), Value::Str("bez".into()));
+        buz_map.insert("fghij".into(), fghij_list.clone());
+        root_map.insert("foo".into(), Value::Int(0));
+        root_map.insert("bar".into(), Value::Int(1));
+        root_map.insert("baz".into(), Value::Int(2));
+        root_map.insert("buz".into(), Value::Dict(buz_map.clone()));
+        root_map.insert("zyx".into(), zyx_list);
+        let mut dict = Value::Dict(root_map);
+
+        *dict.select_mut(".buz.fghij[0]").unwrap() = Value::Int(0);
+        dict.select_mut(".buz.fghij[2]").unwrap().to_map_mut().unwrap().insert("foo".into(), Value::Int(1));
+        dict.select_mut(".buz.fghij[2]").unwrap().to_map_mut().unwrap().insert("bar".into(), Value::Int(2));
+        dict.select_mut(".buz.fghij[2]").unwrap().to_map_mut().unwrap().insert("baz".into(), Value::Int(3));
+
+        assert_eq!(dict.select(".buz.fghij[0]").unwrap(), &Value::Int(0));
+        assert_eq!(dict.select(".buz.fghij[1]").unwrap(), &Value::Str("qrstuv".into()));
+        assert_eq!(dict.select(".buz.fghij[2].wxyz").unwrap(), &Value::Int(0));
+        assert_eq!(dict.select(".buz.fghij[2].foo").unwrap(), &Value::Int(1));
+        assert_eq!(dict.select(".buz.fghij[2].bar").unwrap(), &Value::Int(2));
+        assert_eq!(dict.select(".buz.fghij[2].baz").unwrap(), &Value::Int(3));
     }
 }
