@@ -90,9 +90,11 @@ pub enum ParserError {
 
 /// Parse a bencode data structure from a stream.
 ///
-/// If you expect the stream to contain a certain type, see the [`load_dict`] and [`load_list`]
-/// functions. The parser will try to convert bytestrings to UTF-8 and return a [`Value::Str`]
-/// variant if the conversion is succesful, otherwise the value will be [`Value::Bytes`].
+/// If you expect the stream to contain a certain type, see the [`load_dict`], [`load_list`] and
+/// [`load_prim`] functions.
+///
+/// The parser will try to convert bytestrings to UTF-8 and return a [`Value::Str`] variant if the
+/// conversion is succesful, otherwise the value will be [`Value::Bytes`].
 ///
 /// # Errors
 ///
@@ -101,6 +103,7 @@ pub enum ParserError {
 ///
 /// [`load_dict`]: fn.load_dict.html
 /// [`load_list`]: fn.load_list.html
+/// [`load_prim`]: fn.load_prim.html
 /// [`Value::Str`]: enum.Value.html#variant.Str
 /// [`Value::Bytes`]: enum.Value.html#variant.Bytes
 /// [`ParserError`]: enum.ParserError.html
@@ -648,6 +651,41 @@ pub fn load_list(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> 
 pub fn load_list_str(s: &str) -> Result<Value, ParserError> {
     let mut cursor = Cursor::new(s);
     load_list(&mut cursor)
+}
+
+/// Parse a bencode stream expecting a primitive as the root value.
+///
+/// If your application requires the root value to a be a primitive and you want to avoid
+/// unnecessary allocations, this function will check if the first token in the stream is not one of
+/// the container tokens ('d' or 'e') and then actually parse the stream.
+///
+/// # Errors
+///
+/// If the first character in the stream is a 'd' or 'l', we fail with
+/// `ParserError::UnexpectedRoot`. Other parsing errors may be returned following the check.
+pub fn load_prim(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
+    let mut buf = [0u8];
+
+    stream.read_exact(&mut buf)?;
+
+    match buf[0].try_into() {
+        Ok(Token::List) => Err(ParserError::UnexpectedRoot),
+        Ok(Token::Dict) => Err(ParserError::UnexpectedRoot),
+        _ => {
+            stream.seek(SeekFrom::Start(0))?;
+            load(stream)
+        }
+    }
+}
+
+/// Parse a bencode string expecting a primitive as the root value.
+///
+/// This is a helper function that wraps the str in a Cursor and calls [`load_prim`].
+///
+/// [`load_prim`]: fn.load_prim.html
+pub fn load_prim_str(s: &str) -> Result<Value, ParserError> {
+    let mut cursor = Cursor::new(s);
+    load_prim(&mut cursor)
 }
 
 /// Try to convert a raw buffer to utf8 and return the appropriate Value.
