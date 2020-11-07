@@ -107,7 +107,7 @@ pub struct ValueDisplay<'a> {
     indent_size: usize,
 }
 
-/// An enum containing a valid accessor for a container value.
+/// A valid accessor for a container value.
 ///
 /// See [`Value::get`] and [`Value::get_mut`].
 ///
