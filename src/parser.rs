@@ -96,6 +96,8 @@ pub enum ParserError {
 /// The parser will try to convert bytestrings to UTF-8 and return a [`Value::Str`] variant if the
 /// conversion is succesful, otherwise the value will be [`Value::Bytes`].
 ///
+/// If you're dealing with byte slices, you can use the [`load_str`] function.
+///
 /// # Errors
 ///
 /// There are many ways this function can fail. It will fail if the stream is empty, if there are
@@ -106,6 +108,7 @@ pub enum ParserError {
 /// [`load_prim`]: fn.load_prim.html
 /// [`Value::Str`]: enum.Value.html#variant.Str
 /// [`Value::Bytes`]: enum.Value.html#variant.Bytes
+/// [`load_str`]: fn.load_str.html
 /// [`ParserError`]: enum.ParserError.html
 pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
     let file_size = stream.seek(SeekFrom::End(0))?;
@@ -575,10 +578,10 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
 
 /// Parse a bencode data structure from a string.
 ///
-/// This is a helper function that wraps the str in a Cursor and calls [`load`].
+/// This is a helper function that wraps the slice in a Cursor and calls [`load`].
 ///
 /// [`load`]: fn.load.html
-pub fn load_str(s: &str) -> Result<Value, ParserError> {
+pub fn load_str(s: &[u8]) -> Result<Value, ParserError> {
     let mut cursor = Cursor::new(s);
     load(&mut cursor)
 }
@@ -589,10 +592,14 @@ pub fn load_str(s: &str) -> Result<Value, ParserError> {
 /// allocations, this function will check if the first token in the stream is 'd' and then actually
 /// parse the stream.
 ///
+/// If you're dealing with byte slices, you can use the [`load_dict_str`] function.
+///
 /// # Errors
 ///
 /// If the first character in the stream is not a 'd', we fail with `ParserError::UnexpectedRoot`.
 /// Other parsing errors may be returned following the check.
+///
+/// [`load_dict_str`]: fn.load_dict_str.html
 pub fn load_dict(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
     let mut buf = [0u8];
 
@@ -610,10 +617,10 @@ pub fn load_dict(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> 
 
 /// Parse a bencode string expecting a dict as the root value.
 ///
-/// This is a helper function that wraps the str in a Cursor and calls [`load_dict`].
+/// This is a helper function that wraps the slice in a Cursor and calls [`load_dict`].
 ///
 /// [`load_dict`]: fn.load_dict.html
-pub fn load_dict_str(s: &str) -> Result<Value, ParserError> {
+pub fn load_dict_str(s: &[u8]) -> Result<Value, ParserError> {
     let mut cursor = Cursor::new(s);
     load_dict(&mut cursor)
 }
@@ -624,10 +631,14 @@ pub fn load_dict_str(s: &str) -> Result<Value, ParserError> {
 /// allocations, this function will check if the first token in the stream is 'l' and then actually
 /// parse the stream.
 ///
+/// If you're dealing with byte slices, you can use the [`load_list_str`] function.
+///
 /// # Errors
 ///
 /// If the first character in the stream is not a 'l', we fail with `ParserError::UnexpectedRoot`.
 /// Other parsing errors may be returned following the check.
+///
+/// [`load_list_str`]: fn.load_list_str.html
 pub fn load_list(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
     let mut buf = [0u8];
 
@@ -645,10 +656,10 @@ pub fn load_list(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> 
 
 /// Parse a bencode string expecting a list as the root value.
 ///
-/// This is a helper function that wraps the str in a Cursor and calls [`load_list`].
+/// This is a helper function that wraps the slice in a Cursor and calls [`load_list`].
 ///
 /// [`load_dict`]: fn.load_dict.html
-pub fn load_list_str(s: &str) -> Result<Value, ParserError> {
+pub fn load_list_str(s: &[u8]) -> Result<Value, ParserError> {
     let mut cursor = Cursor::new(s);
     load_list(&mut cursor)
 }
@@ -659,10 +670,14 @@ pub fn load_list_str(s: &str) -> Result<Value, ParserError> {
 /// unnecessary allocations, this function will check if the first token in the stream is not one of
 /// the container tokens ('d' or 'e') and then actually parse the stream.
 ///
+/// If you're dealing with byte slices, you can use the [`load_prim_str`] function.
+///
 /// # Errors
 ///
 /// If the first character in the stream is a 'd' or 'l', we fail with
 /// `ParserError::UnexpectedRoot`. Other parsing errors may be returned following the check.
+///
+/// [`load_prim_str`]: fn.load_prim_str.html
 pub fn load_prim(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
     let mut buf = [0u8];
 
@@ -680,10 +695,10 @@ pub fn load_prim(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> 
 
 /// Parse a bencode string expecting a primitive as the root value.
 ///
-/// This is a helper function that wraps the str in a Cursor and calls [`load_prim`].
+/// This is a helper function that wraps the slice in a Cursor and calls [`load_prim`].
 ///
 /// [`load_prim`]: fn.load_prim.html
-pub fn load_prim_str(s: &str) -> Result<Value, ParserError> {
+pub fn load_prim_str(s: &[u8]) -> Result<Value, ParserError> {
     let mut cursor = Cursor::new(s);
     load_prim(&mut cursor)
 }

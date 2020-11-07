@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 use super::Value;
 
-const DICT_VAL_INT: &'static str = "d3:fooi0e3:bari1e3:bazi2ee";
-const LIST_VAL_STR: &'static str = "l3:foo3:bar3:baze";
-const LIST_VAL_INT: &'static str = "li0ei1ei2ee";
-const LIST_NESTED: &'static str = "lli0ei1ei2eeli3ei4ei5eeli6ei7ei8eee";
-const DICT_MIXED: &'static str = "d3:fooi0e3:bari1e3:bazi2e3:buzd3:boz3:bez\
-                                  5:abcde5:fghij5:fghijl6:klmnop6:qrstuvd4:wxyzi0eeee3:zyxli0ei1ei2eee";
+const DICT_VAL_INT: &[u8] = b"d3:fooi0e3:bari1e3:bazi2ee";
+const LIST_VAL_STR: &[u8] = b"l3:foo3:bar3:baze";
+const LIST_VAL_INT: &[u8] = b"li0ei1ei2ee";
+const LIST_NESTED: &[u8] = b"lli0ei1ei2eeli3ei4ei5eeli6ei7ei8eee";
+const DICT_MIXED: &[u8] = b"d3:fooi0e3:bari1e3:bazi2e3:buzd3:boz3:bez\
+                           5:abcde5:fghij5:fghijl6:klmnop6:qrstuvd4:wxyzi0eeee3:zyxli0ei1ei2eee";
 
-fn check_value(source: &'static str, value: Value) {
+fn check_value(source: &[u8], value: Value) {
     match super::load_str(source) {
         Ok(v) => assert_eq!(v, value),
         Err(e) => panic!("Got {:?}", e),
@@ -17,12 +17,12 @@ fn check_value(source: &'static str, value: Value) {
 
 #[test]
 fn load_primitive_int() {
-    check_value("i123456e", Value::Int(123456));
+    check_value(b"i123456e", Value::Int(123456));
 }
 
 #[test]
 fn load_primitive_str() {
-    check_value("6:foobar", Value::Str("foobar".into()));
+    check_value(b"6:foobar", Value::Str("foobar".into()));
 }
 
 #[test]
