@@ -5,7 +5,6 @@ use std::{
 
 #[derive(Debug, PartialEq)]
 enum TraverseState {
-    Root,
     Dict,
     List,
     Done,
@@ -31,20 +30,20 @@ pub enum TraverseAction {
 /// [`Value::traverse`]: enum.Value.html#method.traverse
 #[derive(Debug)]
 pub enum TraverseError<E = ()> {
-    /// `(context)`
+    /// `(parent)`
     ///
-    /// Tried to enter a value in the current context that was not a container.
+    /// Tried to enter a value in the current container that was not a container.
     NotContainer(String),
 
     /// Tried to go back to the parent container, but we were at the root.
     AtRoot,
 
-    /// `(context)`
+    /// `(parent)`
     ///
     /// Reached the end of the current container.
     End(String),
 
-    /// `(context, error)`
+    /// `(parent, error)`
     ///
     /// An error occurred processing a value and the traversal was aborted.
     Aborted(String, E),
@@ -55,22 +54,22 @@ pub enum TraverseError<E = ()> {
 /// [`Value::select`]: enum.Value.html#method.select
 #[derive(Debug)]
 pub enum SelectError {
-    /// `(context, key)`
+    /// `(container, key)`
     ///
-    /// Key does not exist in this context.
+    /// Key does not exist in this container.
     Key(String, String),
 
-    /// `(context, index)`
+    /// `(container, index)`
     ///
-    /// Index is out of bounds for this context.
+    /// Index is out of bounds for this container.
     Index(String, usize),
 
-    /// `(context)`
+    /// `(parent)`
     ///
-    /// Context is not a container and can't be selected into.
+    /// Value is not a container and can't be selected into.
     Primitive(String),
 
-    /// `(context, pos, reason)`
+    /// `(container, pos, reason)`
     ///
     /// Error processing selector syntax.
     Syntax(String, usize, String),
@@ -308,8 +307,7 @@ impl Value {
     ///
     /// # Errors
     ///
-    /// See [`SelectError`]'s documentation. The `context` in its variants has the same meaning as
-    /// described in [`Value::traverse`].
+    /// See [`SelectError`]'s documentation.
     ///
     /// [`SelectError`]: enum.SelectError.html
     /// [`Value::traverse`]: enum.Value.html#method.traverse
@@ -319,14 +317,14 @@ impl Value {
         }
 
         let full_selector = &selector[..];
-        let mut context = String::new();
+        let mut container = String::new();
         let mut value = self;
 
         loop {
             if value.is_dict() {
                 let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
-                context.extend(format!(".{}", key).chars());
-                value = value.get(&key).ok_or(SelectError::Key(context.clone(), key))?;
+                value = value.get(&key).ok_or(SelectError::Key(container.clone(), key.clone()))?;
+                container.extend(format!(".{}", key).chars());
 
                 if sel.is_empty() {
                     break;
@@ -335,8 +333,8 @@ impl Value {
                 selector = sel;
             } else if value.is_list() {
                 let (sel, index) = Self::parse_index_selector(selector, full_selector)?;
-                context.extend(format!("[{}]", index).chars());
-                value = value.get(index).ok_or(SelectError::Index(context.clone(), index))?;
+                value = value.get(index).ok_or(SelectError::Index(container.clone(), index))?;
+                container.extend(format!("[{}]", index).chars());
 
                 if sel.is_empty() {
                     break;
@@ -344,7 +342,7 @@ impl Value {
 
                 selector = sel;
             } else {
-                return Err(SelectError::Primitive(context));
+                return Err(SelectError::Primitive(container));
             }
         }
 
@@ -360,14 +358,14 @@ impl Value {
         }
 
         let full_selector = &selector[..];
-        let mut context = String::new();
+        let mut container = String::new();
         let mut value = self;
 
         loop {
             if value.is_dict() {
                 let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
-                context.extend(format!(".{}", key).chars());
-                value = value.get_mut(&key).ok_or(SelectError::Key(context.clone(), key))?;
+                value = value.get_mut(&key).ok_or(SelectError::Key(container.clone(), key.clone()))?;
+                container.extend(format!(".{}", key).chars());
 
                 if sel.is_empty() {
                     break;
@@ -376,8 +374,8 @@ impl Value {
                 selector = sel;
             } else if value.is_list() {
                 let (sel, index) = Self::parse_index_selector(selector, full_selector)?;
-                context.extend(format!("[{}]", index).chars());
-                value = value.get_mut(index).ok_or(SelectError::Index(context.clone(), index))?;
+                value = value.get_mut(index).ok_or(SelectError::Index(container.clone(), index))?;
+                container.extend(format!("[{}]", index).chars());
 
                 if sel.is_empty() {
                     break;
@@ -385,7 +383,7 @@ impl Value {
 
                 selector = sel;
             } else {
-                return Err(SelectError::Primitive(context));
+                return Err(SelectError::Primitive(container));
             }
         }
 
@@ -403,12 +401,14 @@ impl Value {
     ///
     /// **Arguments**
     ///
-    /// - `key`: An Option that contains the key of the current value if the parent container is a dict.
-    /// - `index`: An Option that contains the index of current value if the parent container is a list.
+    /// - `key`: An Option that contains the key of the current value if the parent container is a
+    /// dict.
+
+    /// - `index`: An Option that contains the index of current value if the parent container is a
+    /// list.
     /// - `parent`: The container value that is being iterated on.
     /// - `value`: The current value held by the parent's iterator.
-    /// - `context`: A string describing the parent container using the [`select`] syntax. An empty
-    /// context means the parent is the root value (`self`).
+    /// - `selector`: A string describing the current value using [`select`] syntax.
     ///
     /// For each element of the current container, the closure is called with these arguments and
     /// expects a [`TraverseAction`]:
@@ -429,18 +429,24 @@ impl Value {
     /// process the rest of its elements. Any other action will throw the `TraverseError::End`
     /// error.
     ///
+    /// # Mutable traversing
+    ///
+    /// Due to (reasonable) borrow checker restrictions, there can't be a mutable version of this
+    /// function. Instead, use the `selector` argument of the closure to make a list of Values you
+    /// want to change, then use [`select_mut`] on them.
+    ///
     /// # Errors
     ///
     /// If there are no more items in the current container and nothing was done by the closure as
     /// described above, this function will return `TraverseError::End`.
     ///
-    /// See [`TraverseError`] for information on other types of errors. The `context` in its
-    /// variants has the same meaning as the closure argument.
+    /// See [`TraverseError`] for information on other types of errors.
     ///
     /// [`TraverseAction`]: enum.TraverseAction.html
     /// [`select`]: #method.select
     /// [`Value::is_dict`]: enum.Value.html#method.is_dict
     /// [`Value::is_list`]: enum.Value.html#method.is_dict
+    /// [`select_mut`]: #method.select_mut
     /// [`TraverseError`]: enum.TraverseError.html
     pub fn traverse<'a, F, E>(&'a self, mut f: F) -> Result<&'a Value, TraverseError<E>>
     where
@@ -829,7 +835,7 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
             count_stack.push(root.to_vec().unwrap().len());
         }
 
-        let result = root.traverse::<_, fmt::Error>(|key, index, root, value, _context| {
+        let result = root.traverse::<_, fmt::Error>(|key, index, root, value, _selector| {
             if let Some(key) = key {
                 write!(f, "{:indent$}", "", indent = indent * indent_size)?;
                 write!(f, "{:?}: ", key)?;
