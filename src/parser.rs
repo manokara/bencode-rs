@@ -22,7 +22,6 @@ enum Token {
 #[derive(Debug, PartialEq)]
 enum State {
     Root,
-    Dict,
     Int,
     Str,
     DictKey,
@@ -43,7 +42,6 @@ enum State {
     RootValStr,
     RootValDict,
     RootValList,
-    Done,
 }
 
 enum LocalValue {

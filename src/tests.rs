@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use super::Value;
 
-const DICT_VAL_INT: &[u8] = b"d3:fooi0e3:bari1e3:bazi2ee";
+const DICT_VAL_INT: &[u8] = b"d3:bari1e3:bazi2e3:fooi0ee";
 const LIST_VAL_STR: &[u8] = b"l3:foo3:bar3:baze";
 const LIST_VAL_INT: &[u8] = b"li0ei1ei2ee";
 const LIST_NESTED: &[u8] = b"lli0ei1ei2eeli3ei4ei5eeli6ei7ei8eee";
-const DICT_MIXED: &[u8] = b"d3:fooi0e3:bari1e3:bazi2e3:buzd3:boz3:bez\
-                           5:abcde5:fghij5:fghijl6:klmnop6:qrstuvd4:wxyzi0eeee3:zyxli0ei1ei2eee";
+const LIST_NEGATIVES: &[u8] = b"li-1ei-2ei-3ee";
+const DICT_MIXED: &[u8] = b"d3:bari1e3:bazi2e3:buzd5:abcde5:fghij3:boz\
+                            3:bez5:fghijl6:klmnop6:qrstuvd4:wxyzi0eeee3:fooi0e3:zyxli0ei1ei2eee";
 
 fn check_value(source: &[u8], value: Value) {
     match super::load_str(source) {
@@ -70,6 +71,13 @@ fn load_list_nested() {
     ]);
 
     check_value(LIST_NESTED, list);
+}
+
+#[test]
+fn load_list_negatives() {
+    let list = val(vec![(-1).into(), (-2).into(), (-3).into()] as Vec<Value>);
+
+    check_value(LIST_NEGATIVES, list);
 }
 
 #[test]
@@ -330,4 +338,62 @@ fn value_cmp() {
     assert_eq!(val("foo"), "foo");
     assert_eq!(val(0) < 1, true);
     assert_eq!(val("ab") > "aa", true);
+}
+
+#[test]
+fn value_encode() {
+    let mut buffer = Vec::new();
+
+    let list_int = val(vec![0.into(), 1.into(), 2.into()] as Vec<Value>);
+    let list_str = val(vec!["foo".into(), "bar".into(), "baz".into()] as Vec<Value>);
+    let list_nested = val(vec![
+        val(vec![0.into(), 1.into(), 2.into()] as Vec<Value>),
+        val(vec![3.into(), 4.into(), 5.into()] as Vec<Value>),
+        val(vec![6.into(), 7.into(), 8.into()] as Vec<Value>),
+    ]);
+    let list_negatives = val(vec![(-1).into(), (-2).into(), (-3).into()] as Vec<Value>);
+    let dict_simple = val(maplit::btreemap! {
+        "foo".into() => 0.into(),
+        "bar".into() => 1.into(),
+        "baz".into() => 2.into(),
+    });
+    let dict_mixed = val(maplit::btreemap! {
+        "foo".into() => 0.into(),
+        "bar".into() => 1.into(),
+        "baz".into() => 2.into(),
+        "buz".into() => val(maplit::btreemap! {
+            "abcde".into() => "fghij".into(),
+            "boz".into() => "bez".into(),
+            "fghij".into() => vec![
+                "klmnop".into(), "qrstuv".into(), val(maplit::btreemap! {
+                    "wxyz".into() => 0.into()
+                })
+            ].into(),
+        }),
+        "zyx".into() => vec![Value::Int(0), Value::Int(1), Value::Int(2)].into(),
+    });
+
+    list_int.encode(&mut buffer).unwrap();
+    assert_eq!(buffer, LIST_VAL_INT);
+    buffer.clear();
+
+    list_str.encode(&mut buffer).unwrap();
+    assert_eq!(buffer, LIST_VAL_STR);
+    buffer.clear();
+
+    list_nested.encode(&mut buffer).unwrap();
+    assert_eq!(buffer, LIST_NESTED);
+    buffer.clear();
+
+    dict_simple.encode(&mut buffer).unwrap();
+    assert_eq!(buffer, DICT_VAL_INT);
+    buffer.clear();
+
+    dict_mixed.encode(&mut buffer).unwrap();
+    assert_eq!(buffer, DICT_MIXED);
+    buffer.clear();
+
+    list_negatives.encode(&mut buffer).unwrap();
+    assert_eq!(buffer, LIST_NEGATIVES);
+    buffer.clear();
 }

@@ -620,6 +620,43 @@ impl Value {
         value.ok_or(TraverseError::End(context))
     }
 
+    /// Encodes a Value into a byte stream.
+    ///
+    /// Dictionary encoding keys are lexigraphically sorted as per the standard, which is provided
+    /// for free by the internal BTreeMap.
+    pub fn encode(&self, stream: &mut impl std::io::Write) -> std::io::Result<()> {
+        match self {
+            Value::Dict(m) => {
+                write!(stream, "d")?;
+
+                for (key, value) in m {
+                    write!(stream, "{}:{}", key.len(), key)?;
+                    value.encode(stream)?;
+                }
+
+                write!(stream, "e")
+            }
+
+            Value::List(v) => {
+                write!(stream, "l")?;
+
+                for value in v {
+                    value.encode(stream)?;
+                }
+
+                write!(stream, "e")
+            }
+
+            Value::Bytes(v) => {
+                write!(stream, "{}:", v.len())?;
+                stream.write_all(v)
+            }
+
+            Value::Str(s) => write!(stream, "{}:{}", s.len(), s),
+            Value::Int(i) => write!(stream, "i{}e", i.to_string()),
+        }
+    }
+
     fn parse_key_selector<'a>(input: &'a str, full_input: &str) -> Result<(&'a str, String), SelectError> {
         const END_CHARS: &[char] = &['.', '['];
 
