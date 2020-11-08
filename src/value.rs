@@ -779,6 +779,62 @@ impl<'a> ValueDisplay<'a> {
     }
 }
 
+impl From<BTreeMap<String, Value>> for Value {
+    fn from(m: BTreeMap<String, Value>) -> Self {
+        Value::Dict(m)
+    }
+}
+
+impl From<Vec<Value>> for Value {
+    fn from(v: Vec<Value>) -> Self {
+        Value::List(v)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::Str(s)
+    }
+}
+
+impl From<Vec<u8>> for Value {
+    fn from(v: Vec<u8>) -> Self {
+        Value::Bytes(v)
+    }
+}
+
+impl<'a> From<&'a str> for Value {
+    fn from(s: &'a str) -> Self {
+        Value::Str(s.into())
+    }
+}
+
+impl<'a> From<&'a String> for Value {
+    fn from(s: &'a String) -> Self {
+        Value::Str(s.clone())
+    }
+}
+
+impl<'a> From<&'a [u8]> for Value {
+    fn from(s: &'a [u8]) -> Self {
+        Value::Bytes(s.to_vec())
+    }
+}
+
+macro_rules! impl_from_int {
+    ($($t:ty) +) => {
+        $(
+            impl From<$t> for Value {
+                fn from(i: $t) -> Self {
+                    Value::Int(i as i64)
+                }
+            }
+        )+
+    }
+}
+
+impl_from_int!(i64 u32 i32 u16 i16 u8 i8);
+
 impl<'a> From<usize> for ValueAccessor<'a> {
     fn from(n: usize) -> Self {
         ValueAccessor::Index(n)

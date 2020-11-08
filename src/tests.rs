@@ -15,6 +15,10 @@ fn check_value(source: &[u8], value: Value) {
     }
 }
 
+fn val<T>(t: T) -> Value where T: Into<Value> {
+    t.into()
+}
+
 #[test]
 fn load_primitive_int() {
     check_value(b"i123456e", Value::Int(123456));
@@ -59,46 +63,43 @@ fn load_list_val_int() {
 
 #[test]
 fn load_list_nested() {
-    let list_1 = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
-    let list_2 = Value::List(vec![Value::Int(3), Value::Int(4), Value::Int(5)]);
-    let list_3 = Value::List(vec![Value::Int(6), Value::Int(7), Value::Int(8)]);
-    let list = Value::List(vec![list_1, list_2, list_3]);
+    let list = val(vec![
+        val(vec![Value::Int(0), Value::Int(1), Value::Int(2)]),
+        val(vec![Value::Int(3), Value::Int(4), Value::Int(5)]),
+        val(vec![Value::Int(6), Value::Int(7), Value::Int(8)]),
+    ]);
 
     check_value(LIST_NESTED, list);
 }
 
 #[test]
 fn load_dict_mixed() {
-    let mut root_map = BTreeMap::new();
-    let mut buz_map = BTreeMap::new();
-    let mut fghij_map = BTreeMap::new();
+    let dict = val(maplit::btreemap! {
+        "foo".into() => 0.into(),
+        "bar".into() => 1.into(),
+        "baz".into() => 2.into(),
+        "buz".into() => val(maplit::btreemap! {
+            "abcde".into() => "fghij".into(),
+            "boz".into() => "bez".into(),
+            "fghij".into() => vec![
+                "klmnop".into(), "qrstuv".into(), val(maplit::btreemap! {
+                    "wxyz".into() => 0.into()
+                })
+            ].into(),
+        }),
+        "zyx".into() => vec![Value::Int(0), Value::Int(1), Value::Int(2)].into(),
+    });
 
-    fghij_map.insert("wxyz".into(), Value::Int(0));
-
-    let fghij_list = Value::List(vec![
-        Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map),
-    ]);
-    let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
-
-    buz_map.insert("abcde".into(), Value::Str("fghij".into()));
-    buz_map.insert("boz".into(), Value::Str("bez".into()));
-    buz_map.insert("fghij".into(), fghij_list);
-    root_map.insert("foo".into(), Value::Int(0));
-    root_map.insert("bar".into(), Value::Int(1));
-    root_map.insert("baz".into(), Value::Int(2));
-    root_map.insert("buz".into(), Value::Dict(buz_map));
-    root_map.insert("zyx".into(), zyx_list);
-
-    check_value(DICT_MIXED, Value::Dict(root_map));
+    check_value(DICT_MIXED, dict);
 }
 
 #[test]
 fn select_dict_simple() {
-    let mut map = BTreeMap::new();
-    map.insert("foo".into(), Value::Int(0));
-    map.insert("bar".into(), Value::Int(1));
-    map.insert("baz".into(), Value::Int(2));
-    let dict = Value::Dict(map);
+    let dict = val(maplit::btreemap! {
+        "foo".into() => 0.into(),
+        "bar".into() => 1.into(),
+        "baz".into() => 2.into(),
+    });
 
     assert_eq!(dict.select(".foo").unwrap(), &Value::Int(0));
     assert_eq!(dict.select(".bar").unwrap(), &Value::Int(1));
@@ -107,10 +108,10 @@ fn select_dict_simple() {
 
 #[test]
 fn select_list_nested() {
-    let list_1 = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
-    let list_2 = Value::List(vec![Value::Int(3), Value::Int(4), Value::Int(5)]);
-    let list_3 = Value::List(vec![Value::Int(6), Value::Int(7), Value::Int(8)]);
-    let list = Value::List(vec![list_1.clone(), list_2.clone(), list_3.clone()]);
+    let list_1 = val(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
+    let list_2 = val(vec![Value::Int(3), Value::Int(4), Value::Int(5)]);
+    let list_3 = val(vec![Value::Int(6), Value::Int(7), Value::Int(8)]);
+    let list = val(vec![list_1.clone(), list_2.clone(), list_3.clone()]);
 
     assert_eq!(list.select("[0]").unwrap(), &list_1);
     assert_eq!(list.select("[1]").unwrap(), &list_2);

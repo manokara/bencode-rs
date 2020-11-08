@@ -10,3 +10,6 @@ categories = ["parsing"]
 edition = "2018"
 
 [dependencies]
+
+[dev-dependencies]
+maplit = "1.0"
