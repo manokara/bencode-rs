@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::BTreeMap,
     fmt,
 };
@@ -1052,3 +1053,91 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
         Ok(())
     }
 }
+
+impl<'a> PartialEq<str> for Value {
+    fn eq(&self, rhs: &str) -> bool {
+        if let Value::Str(s) = self {
+            s == rhs
+        } else {
+            false
+        }
+    }
+}
+
+impl<'a> PartialEq<&'a str> for Value {
+    fn eq(&self, rhs: &&'a str) -> bool {
+        if let Value::Str(s) = self {
+            s == rhs
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<String> for Value {
+    fn eq(&self, rhs: &String) -> bool {
+        if let Value::Str(s) = self {
+            s == rhs
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialOrd<String> for Value {
+    fn partial_cmp(&self, rhs: &String) -> Option<Ordering> {
+        if let Value::Str(s) = self {
+            s.partial_cmp(rhs)
+        } else {
+            None
+        }
+    }
+}
+
+impl PartialOrd<str> for Value {
+    fn partial_cmp(&self, rhs: &str) -> Option<Ordering> {
+        if let Value::Str(s) = self {
+            s.as_str().partial_cmp(rhs)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> PartialOrd<&'a str> for Value {
+    fn partial_cmp(&self, rhs: &&'a str) -> Option<Ordering> {
+        if let Value::Str(s) = self {
+            s.as_str().partial_cmp(rhs)
+        } else {
+            None
+        }
+    }
+}
+
+macro_rules! impl_cmp_int {
+    ($($t:ty) +) => {
+        $(
+            impl PartialEq<$t> for Value {
+                fn eq(&self, rhs: &$t) -> bool {
+                    if let Value::Int(i) = self {
+                        *i == *rhs as i64
+                    } else {
+                        false
+                    }
+                }
+            }
+
+            impl PartialOrd<$t> for Value {
+                fn partial_cmp(&self, rhs: &$t) -> Option<Ordering> {
+                    if let Value::Int(i) = self {
+                        i.partial_cmp(&(*rhs as i64))
+                    } else {
+                        None
+                    }
+                }
+            }
+        )+
+    };
+}
+
+impl_cmp_int!(i64 u32 i32 u16 i16 u8 i8);

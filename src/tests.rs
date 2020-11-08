@@ -312,3 +312,22 @@ fn select_mut_dict_mixed() {
     assert_eq!(dict.select(".buz.fghij[2].bar").unwrap(), &Value::Int(2));
     assert_eq!(dict.select(".buz.fghij[2].baz").unwrap(), &Value::Int(3));
 }
+
+#[test]
+fn value_cmp() {
+    let dict = val(maplit::btreemap! {
+        "foo".into() => 0.into(),
+        "bar".into() => 1.into(),
+        "baz".into() => 2.into(),
+        "a".into() => "b".into(),
+    });
+
+    assert_eq!(dict.get("foo").unwrap(), &0i64);
+    assert_eq!(dict.get("bar").unwrap(), &1u32);
+    assert_eq!(dict.get("baz").unwrap(), &2u8);
+    assert_eq!(dict.get("a").unwrap(), "b");
+    assert_eq!(val(0), 0);
+    assert_eq!(val("foo"), "foo");
+    assert_eq!(val(0) < 1, true);
+    assert_eq!(val("ab") > "aa", true);
+}
