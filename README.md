@@ -32,10 +32,10 @@ const SAMPLE: &[u8] = b"li1ei3ei3ei7ee";
 let value = bencode::load_str(SAMPLE).unwrap();
 
 // You can do direct comparisions with primitive values like strings, bytes and integers.
-assert_eq!(bencode.get(0).unwrap(), &1);
-assert_eq!(bencode.get(1).unwrap(), &3);
-assert_eq!(bencode.get(2).unwrap(), &3);
-assert_eq!(bencode.get(3).unwrap(), &7);
+assert_eq!(value.get(0).unwrap(), 1);
+assert_eq!(value.get(1).unwrap(), 3);
+assert_eq!(value.get(2).unwrap(), 3);
+assert_eq!(value.get(3).unwrap(), 7);
 ```
 
 ### Loading from a file
@@ -117,7 +117,7 @@ const SAMPLE: &[u8] = b"li1ei3ei3ei7ee";
 let mut value = bencode::load_str(SAMPLE).unwrap();
 *value.get_mut(0).unwrap() = 0.into();
 *value.get_mut(2).unwrap() = "foobar".into();
-assert_eq!(value.get(0).unwrap(), &0);
+assert_eq!(value.get(0).unwrap(), 0);
 assert_eq!(value.get(2).unwrap(), "foobar");
 ```
 

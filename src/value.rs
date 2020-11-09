@@ -1164,7 +1164,27 @@ macro_rules! impl_cmp_int {
                 }
             }
 
+            impl<'a> PartialEq<$t> for &'a Value {
+                fn eq(&self, rhs: &$t) -> bool {
+                    if let Value::Int(i) = self {
+                        *i == *rhs as i64
+                    } else {
+                        false
+                    }
+                }
+            }
+
             impl PartialOrd<$t> for Value {
+                fn partial_cmp(&self, rhs: &$t) -> Option<Ordering> {
+                    if let Value::Int(i) = self {
+                        i.partial_cmp(&(*rhs as i64))
+                    } else {
+                        None
+                    }
+                }
+            }
+
+            impl<'a> PartialOrd<$t> for &'a Value {
                 fn partial_cmp(&self, rhs: &$t) -> Option<Ordering> {
                     if let Value::Int(i) = self {
                         i.partial_cmp(&(*rhs as i64))

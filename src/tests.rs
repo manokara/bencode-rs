@@ -330,9 +330,9 @@ fn value_cmp() {
         "a".into() => "b".into(),
     });
 
-    assert_eq!(dict.get("foo").unwrap(), &0i64);
-    assert_eq!(dict.get("bar").unwrap(), &1u32);
-    assert_eq!(dict.get("baz").unwrap(), &2u8);
+    assert_eq!(dict.get("foo").unwrap(), 0i64);
+    assert_eq!(dict.get("bar").unwrap(), 1u32);
+    assert_eq!(dict.get("baz").unwrap(), 2u8);
     assert_eq!(dict.get("a").unwrap(), "b");
     assert_eq!(val(0), 0);
     assert_eq!(val("foo"), "foo");
