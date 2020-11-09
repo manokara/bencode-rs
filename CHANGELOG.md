@@ -11,9 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON serialization with nanoserde
 - Comparing Values with byte slices and vecs
-
-### Changed
-
+- Benchmarks for loading and encoding
 - Allow Value references to be compared to owned integers
 
 ## [0.8.0] - 2020-11-08

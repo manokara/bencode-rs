@@ -16,4 +16,9 @@ json = ["nanoserde"]
 nanoserde = { version = "0.1.20", optional = true }
 
 [dev-dependencies]
+criterion = "0.3"
 maplit = "1.0"
+
+[[bench]]
+name = "load"
+harness = false
