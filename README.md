@@ -4,6 +4,24 @@ Yet another library for parsing bencode. It has a focus on being able to manipul
 
 Everything is documented, but I don't think I'm going to publish this to crates.io so you'll have to read it locally with `cargo doc`.
 
+## Building
+
+Add the following to your `dependencies` section:
+
+```
+bencode = { git = "https://github.com/manokara/bencode-rs", rev = "0.8.0" }
+```
+
+### Enable JSON serialization
+
+The library has a `json` feature that uses [nanoserde] to convert Values to and from JSON, which might be useful in some use cases. Add the feature to the `features` list of the crate definition above, like:
+
+```
+bencode = { ..., features = ["json"] }
+```
+
+And you'll be able to use nanoserde's serialization traits with `Value`.
+
 ## Usage
 
 ### Loading from a byte slice
@@ -29,7 +47,7 @@ let inner_value = value.get("foo")
     .and_then(|v| v.get("foobar"))
     .and_then(|v| v.get("foobarbaz"))
     .unwrap();
-    
+
 assert_eq!(inner_value, "hello world");
 ```
 
@@ -56,7 +74,7 @@ assert_eq!(inner_value.to_bytes(), None);
 assert_eq!(inner_value.to_i64(), Some(4));
 assert_eq!(inner_value.to_map(), None);
 assert_eq!(inner_value.to_vec(), None);
-``` 
+```
 
 ### Traversing structures
 
@@ -64,7 +82,7 @@ assert_eq!(inner_value.to_vec(), None);
 const DICT: &[u8] = b"d3:bari1e3:bazi2e3:buzd5:abcde5:fghij3:boz\
                       3:bez5:fghijl6:klmnop6:qrstuvd4:wxyzi0eeee\
                       3:fooi0e3:zyxli0ei1ei2eee";
-                                            
+
 use bencode::TraverseAction;
 
 let value = bencode::load_str(DICT).unwrap();
@@ -73,18 +91,18 @@ let matching_value = value.traverse(|key, index, parent, value, selector| {
 	if value.is_container() {
 		return Ok(TraverseAction::Enter);
 	}
-	
+
 	// End of container, go back up (unless we're at the root)
-	// In this particular case this will never happen, since the 
+	// In this particular case this will never happen, since the
 	// path to the value is straight down.
 	if key.is_none() && index.is_none() && parent != value {
 		return Ok(TraverseAction::Exit);
 	}
-	
+
 	if value == "qrstuv" {
 		return Ok(TraverseAction::Stop);
 	}
-	
+
 	Ok(TraverseAction::Continue)
 }).unwrap();
 
@@ -115,3 +133,5 @@ let mut buffer = Vec::new();
 value.encode(&mut buffer).unwrap();
 assert_eq!(buffer, DICT);
 ```
+
+[nanoserde]: https://crates.io/crates/nanoserde

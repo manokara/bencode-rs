@@ -1,5 +1,6 @@
 mod parser;
 #[cfg(test)] mod tests;
+#[cfg(feature = "json")] mod json;
 mod value;
 
 pub use parser::{
