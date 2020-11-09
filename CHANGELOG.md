@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - JSON serialization with nanoserde
+- Comparing Values with byte slices and vecs
 
 ### Changed
 
@@ -21,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Make ValueAccessor public so it can show in the docs
 - Add load_prim() function
-- Add functions to convert stdlib types to Values
+- Add conversions from stdlib types to Values
 - Allow comparing primitive Values to stdlib types
 - Add Value::encode() function
 - Add a test for Value::traverse()

@@ -1121,6 +1121,36 @@ impl PartialEq<String> for Value {
     }
 }
 
+impl PartialEq<[u8]> for Value {
+    fn eq(&self, rhs: &[u8]) -> bool {
+        if let Value::Bytes(v) = self {
+            v.as_slice() == rhs
+        } else {
+            false
+        }
+    }
+}
+
+impl<'a> PartialEq<&'a [u8]> for Value {
+    fn eq(&self, rhs: &&'a [u8]) -> bool {
+        if let Value::Bytes(v) = self {
+            v.as_slice() == *rhs
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<Vec<u8>> for Value {
+    fn eq(&self, rhs: &Vec<u8>) -> bool {
+        if let Value::Bytes(v) = self {
+            v == rhs
+        } else {
+            false
+        }
+    }
+}
+
 impl PartialOrd<String> for Value {
     fn partial_cmp(&self, rhs: &String) -> Option<Ordering> {
         if let Value::Str(s) = self {
@@ -1145,6 +1175,36 @@ impl<'a> PartialOrd<&'a str> for Value {
     fn partial_cmp(&self, rhs: &&'a str) -> Option<Ordering> {
         if let Value::Str(s) = self {
             s.as_str().partial_cmp(rhs)
+        } else {
+            None
+        }
+    }
+}
+
+impl PartialOrd<[u8]> for Value {
+    fn partial_cmp(&self, rhs: &[u8]) -> Option<Ordering> {
+        if let Value::Bytes(v) = self {
+            v.as_slice().partial_cmp(rhs)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> PartialOrd<&'a [u8]> for Value {
+    fn partial_cmp(&self, rhs: &&'a [u8]) -> Option<Ordering> {
+        if let Value::Bytes(v) = self {
+            v.as_slice().partial_cmp(rhs)
+        } else {
+            None
+        }
+    }
+}
+
+impl PartialOrd<Vec<u8>> for Value {
+    fn partial_cmp(&self, rhs: &Vec<u8>) -> Option<Ordering> {
+        if let Value::Bytes(v) = self {
+            v.partial_cmp(rhs)
         } else {
             None
         }
