@@ -9,7 +9,7 @@ Everything is documented, but I don't think I'm going to publish this to crates.
 Add the following to your `dependencies` section:
 
 ```
-bencode = { git = "https://github.com/manokara/bencode-rs", rev = "0.8.0" }
+bencode = { git = "https://github.com/manokara/bencode-rs", rev = "v0.8.0" }
 ```
 
 ### Enable JSON serialization
@@ -31,7 +31,7 @@ const SAMPLE: &[u8] = b"li1ei3ei3ei7ee";
 
 let value = bencode::load_str(SAMPLE).unwrap();
 
-/// You can do direct comparisions with primitive values like strings, bytes and integers.
+// You can do direct comparisions with primitive values like strings, bytes and integers.
 assert_eq!(bencode.get(0).unwrap(), &1);
 assert_eq!(bencode.get(1).unwrap(), &3);
 assert_eq!(bencode.get(2).unwrap(), &3);
@@ -67,8 +67,8 @@ let mut file = File::open("somedata.bencode").unwrap();
 let value = bencode::load(&mut file).unwrap();
 let inner_value = value.select(".something[0]"); // An int
 
-/// The library differentiates strings and bytes, where strings are valid
-/// UTF-8 and bytes are any other data that failed the conversion.
+// The library differentiates strings and bytes, where strings are valid
+// UTF-8 and bytes are any other data that failed the conversion.
 assert_eq!(inner_value.to_str(), None);
 assert_eq!(inner_value.to_bytes(), None);
 assert_eq!(inner_value.to_i64(), Some(4));
