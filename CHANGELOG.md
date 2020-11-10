@@ -9,19 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- JSON serialization with nanoserde
-- Allow Value references to be compared to owned integer
-- Comparing Values with byte slices and vecs
-- Benchmarks
-
-### Changed
-
-- The `value` argument of the `Value::traverse` closure is now optional.
-
-## [0.8.0] - 2020-11-08
-
-### Added
-
 - Make ValueAccessor public so it can show in the docs
 - Add load_prim() function
 - Add conversions from stdlib types to Values
@@ -29,12 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Value::encode() function
 - Add a test for Value::traverse()
 - Add README
+- JSON serialization with nanoserde
+- Allow Value references to be compared to owned integer
+- Comparing Values with byte slices and vecs
+- Benchmarks
+
 
 ### Changed
 
 - Split library into different modules
 - Use byte slices in load_str() functions
 - Change the concept of "context" in traverse() and select()
+- The `value` argument of the `Value::traverse` closure is now optional.
 
 ### Removed
 
@@ -93,7 +86,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ref variants from Value
 - Debug prints
 
-[Unreleased]: https://github.com/manokara/bencode-rs/compare/v0.8.0...HEAD
-[0.8.0]: https://github.com/manokara/bencode-rs/compare/v0.7.0...v0.8.0
+[Unreleased]: https://github.com/manokara/bencode-rs/compare/v0.7.0...HEAD
 [0.7.0]: https://github.com/manokara/bencode-rs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/manokara/bencode-rs/releases/tag/v0.6.0
