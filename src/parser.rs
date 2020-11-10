@@ -9,7 +9,7 @@ use std::{
 use super::Value;
 
 const MAX_INT_BUF: usize = 32;
-const CHUNK_SIZE: u64 = 2048;
+const CHUNK_SIZE: u64 = 8096;
 
 enum Token {
     Dict,
