@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comparing Values with byte slices and vecs
 - Benchmarks
 
+### Changed
+
+- The `value` argument of the `Value::traverse` closure is now optional.
+
 ## [0.8.0] - 2020-11-08
 
 ### Added

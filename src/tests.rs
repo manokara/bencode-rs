@@ -405,22 +405,22 @@ fn value_encode() {
 fn value_traverse() {
     use super::TraverseAction;
 
-    let value = super::load_str(DICT_MIXED).unwrap();
-    let matching_value = value.traverse::<_, ()>(|key, index, parent, value, _selector| {
-        // Dive into the structure
-        if value.is_container() {
-            return Ok(TraverseAction::Enter);
-        }
+    let root_value = super::load_str(DICT_MIXED).unwrap();
+    let matching_value = root_value.traverse::<_, ()>(|_key, _index, parent, value, _selector| {
+        if let Some(value) = value {
+            // Dive into the structure
+            if value.is_container() {
+                return Ok(TraverseAction::Enter);
+            }
 
-        // End of container, go back up (unless we're at the root)
-        // In this particular case this will never happen, since the path to the
-        // value is straight down.
-        if key.is_none() && index.is_none() && parent != value {
+            if value == "qrstuv" {
+                return Ok(TraverseAction::Stop);
+            }
+        } else if parent != &root_value {
+            // End of container, go back up (unless we're at the root)
+            // In this particular case this will never happen, since the path to the
+            // value is straight down.
             return Ok(TraverseAction::Exit);
-        }
-
-        if value == "qrstuv" {
-            return Ok(TraverseAction::Stop);
         }
 
         Ok(TraverseAction::Continue)

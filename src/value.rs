@@ -408,7 +408,8 @@ impl Value {
     /// - `index`: An Option that contains the index of current value if the parent container is a
     /// list.
     /// - `parent`: The container value that is being iterated on.
-    /// - `value`: The current value held by the parent's iterator.
+    /// - `value`: An option with the current value held by the parent's iterator. If it's None, it
+    /// means there are no more items left in the parent. See [End of Container].
     /// - `selector`: A string describing the current value using [`select`] syntax.
     ///
     /// For each element of the current container, the closure is called with these arguments and
@@ -421,14 +422,13 @@ impl Value {
     /// - `TraverseAction::Stop`: Stops the process and returns the current value.
     /// - `TraverseAction::Continue`: Go to the next item in the current container.
     ///
-    /// `key` and `index` can be used for determining the type of the current container other than
-    /// [`Value::is_dict`] or [`Value::is_list`]. `key` being Some means the current container is a
-    /// dict, while `index` being Some means it is a list.
+    /// # End of Container
     ///
-    /// However, if both are None, it means the current container has no more items. You only have
-    /// one option here: return `TraverseAction::Exit` to go back to the parent container and
-    /// process the rest of its elements. Any other action will throw the `TraverseError::End`
-    /// error.
+    /// When there are no more items left in the current container (parent), you have two choices:
+    ///
+    /// - Return `TraverseAction::Exit` to go back its parent container and process the rest of its
+    /// elements.
+    /// - Return any other action and the method will throw the `TraverseError::End` error.
     ///
     /// # Mutable traversing
     ///
@@ -443,6 +443,7 @@ impl Value {
     ///
     /// See [`TraverseError`] for information on other types of errors.
     ///
+    /// [End of Container]: #end-of-container
     /// [`TraverseAction`]: enum.TraverseAction.html
     /// [`select`]: #method.select
     /// [`Value::is_dict`]: enum.Value.html#method.is_dict
@@ -451,7 +452,7 @@ impl Value {
     /// [`TraverseError`]: enum.TraverseError.html
     pub fn traverse<'a, F, E>(&'a self, mut f: F) -> Result<&'a Value, TraverseError<E>>
     where
-        F: FnMut(Option<&str>, Option<usize>, &'a Value, &'a Value, &str) -> Result<TraverseAction, E>,
+        F: FnMut(Option<&str>, Option<usize>, &'a Value, Option<&'a Value>, &str) -> Result<TraverseAction, E>,
     {
         if !self.is_container() {
             return Err(TraverseError::NotContainer("<root>".into()));
@@ -475,7 +476,7 @@ impl Value {
                     if let Some(key) = next {
                         let key = key.as_str();
                         let val = root.get(key).unwrap();
-                        let action = f(Some(key), None, root, val, &context)
+                        let action = f(Some(key), None, root, Some(val), &context)
                             .map_err(|e| TraverseError::Aborted(context.clone(), e))?;
 
                         match action {
@@ -519,7 +520,7 @@ impl Value {
                             TraverseAction::Continue => (),
                         }
                     } else {
-                        let action = f(None, None, root, &Value::Int(0), &context)
+                        let action = f(None, None, root, None, &context)
                             .map_err(|e| TraverseError::Aborted(context.clone(), e))?;
 
                         match action {
@@ -547,7 +548,7 @@ impl Value {
 
                     if let Some(index) = next {
                         let val = root.get(index).unwrap();
-                        let action = f(None, Some(index), root, val, &context)
+                        let action = f(None, Some(index), root, Some(val), &context)
                             .map_err(|e| TraverseError::Aborted(context.clone(), e))?;
 
                         match action {
@@ -591,7 +592,7 @@ impl Value {
                             TraverseAction::Continue => (),
                         }
                     } else {
-                        let action = f(None, None, root, &Value::Int(0), &context)
+                        let action = f(None, None, root, None, &context)
                             .map_err(|e| TraverseError::Aborted(context.clone(), e))?;
 
                         match action {
@@ -934,14 +935,14 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
                 write!(f, "{:indent$}", "", indent = indent * indent_size)?;
                 write!(f, "{:?}: ", key)?;
 
-                if let Some(i) = value.to_i64() {
+                if let Some(i) = value.unwrap().to_i64() {
                     write!(f, "{},\n", i)?;
-                } else if let Some(s) = value.to_str() {
+                } else if let Some(s) = value.unwrap().to_str() {
                     write!(f, "{:?},\n", s)?;
-                } else if let Some(b) = value.to_bytes() {
+                } else if let Some(b) = value.unwrap().to_bytes() {
                     write!(f, "{},\n", repr_bytes(b, *max_bytes))?;
-                } else if value.is_dict() {
-                    if value.len() == 0 {
+                } else if value.unwrap().is_dict() {
+                    if value.unwrap().len() == 0 {
                         write!(f, "{{}},\n")?;
                     } else if depth < *max_depth {
                         write!(f, "{{\n")?;
@@ -953,8 +954,8 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
                     } else {
                         write!(f, "{{...}},\n")?;
                     }
-                } else if value.is_list() {
-                    let count = value.len();
+                } else if value.unwrap().is_list() {
+                    let count = value.unwrap().len();
 
                     if count == 0 {
                         write!(f, "[],\n")?;
@@ -993,26 +994,26 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
                     }
 
                     return Ok(TraverseAction::Exit);
-                } else if let Some(i) = value.to_i64() {
+                } else if let Some(i) = value.unwrap().to_i64() {
                     write!(f, "{}", i)?;
 
                     if !is_last {
                         write!(f, ", ")?;
                     }
-                } else if let Some(s) = value.to_str() {
+                } else if let Some(s) = value.unwrap().to_str() {
                     write!(f, "{:?}", s)?;
 
                     if !is_last {
                         write!(f, ", ")?;
                     }
-                } else if let Some(b) = value.to_bytes() {
+                } else if let Some(b) = value.unwrap().to_bytes() {
                     write!(f, "{}", repr_bytes(b, *max_bytes))?;
 
                     if !is_last {
                         write!(f, ", ")?;
                     }
-                } else if value.is_dict() {
-                    if value.len() == 0 {
+                } else if value.unwrap().is_dict() {
+                    if value.unwrap().len() == 0 {
                         write!(f, "{{}}")?;
                     } else if depth < *max_depth {
                         write!(f, "{{\n")?;
@@ -1024,8 +1025,8 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
                     } else {
                         write!(f, "{{...}}")?;
                     }
-                } else if value.is_list() {
-                    let count = value.len();
+                } else if value.unwrap().is_list() {
+                    let count = value.unwrap().len();
 
                     if count == 0 {
                         write!(f, "[]")?;
