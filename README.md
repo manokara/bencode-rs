@@ -54,17 +54,23 @@ assert_eq!(inner_value, "hello world");
 ### Selecting values
 
 ```rust
-let mut file = File::open("somedata.bencode").unwrap();
-let value = bencode::load(&mut file).unwrap();
+const SAMPLE: &[u8] = b"d3:food6:foobard9:foobarbazi0eee\
+                        4:listli0ed3:fooi1eeee";
+
+let value = bencode::load_str(SAMPLE).unwrap();
 let inner_value = value.select(".foo.foobar.foobarbaz").unwrap();
 let another_value = value.select(".list[1].foo").unwrap();
+
+assert_eq!(inner_value, 0);
+assert_eq!(another_value, 1);
 ```
 
 ### Converting values to inner types
 
 ```rust
-let mut file = File::open("somedata.bencode").unwrap();
-let value = bencode::load(&mut file).unwrap();
+const SAMPLE: &[u8] = b"d9:somethingli4eee";
+
+let value = bencode::load_str(SAMPLE).unwrap();
 let inner_value = value.select(".something[0]").unwrap(); // An int
 
 // The library differentiates strings and bytes, where strings are valid
@@ -117,6 +123,7 @@ const SAMPLE: &[u8] = b"li1ei3ei3ei7ee";
 let mut value = bencode::load_str(SAMPLE).unwrap();
 *value.get_mut(0).unwrap() = 0.into();
 *value.get_mut(2).unwrap() = "foobar".into();
+
 assert_eq!(value.get(0).unwrap(), 0);
 assert_eq!(value.get(2).unwrap(), "foobar");
 ```
