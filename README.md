@@ -65,7 +65,7 @@ let another_value = value.select(".list[1].foo").unwrap();
 ```rust
 let mut file = File::open("somedata.bencode").unwrap();
 let value = bencode::load(&mut file).unwrap();
-let inner_value = value.select(".something[0]"); // An int
+let inner_value = value.select(".something[0]").unwrap(); // An int
 
 // The library differentiates strings and bytes, where strings are valid
 // UTF-8 and bytes are any other data that failed the conversion.
