@@ -1,8 +1,4 @@
-use std::{
-    cmp::Ordering,
-    collections::BTreeMap,
-    fmt,
-};
+use std::{cmp::Ordering, collections::BTreeMap, fmt};
 
 #[derive(Debug, PartialEq)]
 enum TraverseState {
@@ -78,7 +74,6 @@ pub enum SelectError {
     /// Reached end of selector while trying to parse it. e.g. didn't close a bracket.
     End,
 }
-
 
 /// A bencode value
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -271,7 +266,10 @@ impl Value {
     ///
     /// Return value will be None if the element does not exist in this container or if this value
     /// is not a container. See also [`is_container`](#method.is_container).
-    pub fn get<'a, A>(&self, a: A) -> Option<&Value> where A: Into<ValueAccessor<'a>> {
+    pub fn get<'a, A>(&self, a: A) -> Option<&Value>
+    where
+        A: Into<ValueAccessor<'a>>,
+    {
         match a.into() {
             ValueAccessor::Index(n) => self.to_vec().and_then(|v| v.get(n)),
             ValueAccessor::Key(s) => self.to_map().and_then(|m| m.get(s)),
@@ -282,7 +280,10 @@ impl Value {
     ///
     /// Return value will be None if the element does not exist in this container or if this value
     /// is not a container. See also [`is_container`](#method.is_container).
-    pub fn get_mut<'a, A>(&mut self, a: A) -> Option<&mut Value> where A: Into<ValueAccessor<'a>> {
+    pub fn get_mut<'a, A>(&mut self, a: A) -> Option<&mut Value>
+    where
+        A: Into<ValueAccessor<'a>>,
+    {
         match a.into() {
             ValueAccessor::Index(n) => self.to_vec_mut().and_then(|v| v.get_mut(n)),
             ValueAccessor::Key(s) => self.to_map_mut().and_then(|m| m.get_mut(s)),
@@ -324,7 +325,9 @@ impl Value {
         loop {
             if value.is_dict() {
                 let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
-                value = value.get(&key).ok_or(SelectError::Key(container.clone(), key.clone()))?;
+                value = value
+                    .get(&key)
+                    .ok_or(SelectError::Key(container.clone(), key.clone()))?;
                 container.extend(format!(".{}", key).chars());
 
                 if sel.is_empty() {
@@ -334,7 +337,9 @@ impl Value {
                 selector = sel;
             } else if value.is_list() {
                 let (sel, index) = Self::parse_index_selector(selector, full_selector)?;
-                value = value.get(index).ok_or(SelectError::Index(container.clone(), index))?;
+                value = value
+                    .get(index)
+                    .ok_or(SelectError::Index(container.clone(), index))?;
                 container.extend(format!("[{}]", index).chars());
 
                 if sel.is_empty() {
@@ -365,7 +370,9 @@ impl Value {
         loop {
             if value.is_dict() {
                 let (sel, key) = Self::parse_key_selector(selector, full_selector)?;
-                value = value.get_mut(&key).ok_or(SelectError::Key(container.clone(), key.clone()))?;
+                value = value
+                    .get_mut(&key)
+                    .ok_or(SelectError::Key(container.clone(), key.clone()))?;
                 container.extend(format!(".{}", key).chars());
 
                 if sel.is_empty() {
@@ -375,7 +382,9 @@ impl Value {
                 selector = sel;
             } else if value.is_list() {
                 let (sel, index) = Self::parse_index_selector(selector, full_selector)?;
-                value = value.get_mut(index).ok_or(SelectError::Index(container.clone(), index))?;
+                value = value
+                    .get_mut(index)
+                    .ok_or(SelectError::Index(container.clone(), index))?;
                 container.extend(format!("[{}]", index).chars());
 
                 if sel.is_empty() {
@@ -452,7 +461,13 @@ impl Value {
     /// [`TraverseError`]: enum.TraverseError.html
     pub fn traverse<'a, F, E>(&'a self, mut f: F) -> Result<&'a Value, TraverseError<E>>
     where
-        F: FnMut(Option<&str>, Option<usize>, &'a Value, Option<&'a Value>, &str) -> Result<TraverseAction, E>,
+        F: FnMut(
+            Option<&str>,
+            Option<usize>,
+            &'a Value,
+            Option<&'a Value>,
+            &str,
+        ) -> Result<TraverseAction, E>,
     {
         if !self.is_container() {
             return Err(TraverseError::NotContainer("<root>".into()));
@@ -462,8 +477,15 @@ impl Value {
         let mut context = String::new();
         let mut value_stack = vec![self];
         let mut keys_stack = self.to_map().map(|m| vec![m.keys()]).unwrap_or(Vec::new());
-        let mut index_stack = self.to_vec().map(|v| vec![0..v.len()]).unwrap_or(Vec::new());
-        let mut state = if self.is_dict() { TraverseState::Dict } else { TraverseState::List };
+        let mut index_stack = self
+            .to_vec()
+            .map(|v| vec![0..v.len()])
+            .unwrap_or(Vec::new());
+        let mut state = if self.is_dict() {
+            TraverseState::Dict
+        } else {
+            TraverseState::List
+        };
         let mut value = None;
 
         while state != TraverseState::Done {
@@ -658,7 +680,10 @@ impl Value {
         }
     }
 
-    fn parse_key_selector<'a>(input: &'a str, full_input: &str) -> Result<(&'a str, String), SelectError> {
+    fn parse_key_selector<'a>(
+        input: &'a str,
+        full_input: &str,
+    ) -> Result<(&'a str, String), SelectError> {
         const END_CHARS: &[char] = &['.', '['];
 
         let mut buf = String::new();
@@ -703,12 +728,20 @@ impl Value {
                     escaped = true;
                 }
             } else if escaped {
-                return Err(SelectError::Syntax(context(), pos(), format!("Cannot escape '{}'", c)));
+                return Err(SelectError::Syntax(
+                    context(),
+                    pos(),
+                    format!("Cannot escape '{}'", c),
+                ));
             }
         }
 
         if escaped {
-            return Err(SelectError::Syntax(context(), pos(), "Trailing escape".into()));
+            return Err(SelectError::Syntax(
+                context(),
+                pos(),
+                "Trailing escape".into(),
+            ));
         }
 
         if buf.is_empty() && !input.is_empty() {
@@ -719,7 +752,10 @@ impl Value {
         Ok((input, buf))
     }
 
-    fn parse_index_selector<'a>(input: &'a str, full_input: &str) -> Result<(&'a str, usize), SelectError> {
+    fn parse_index_selector<'a>(
+        input: &'a str,
+        full_input: &str,
+    ) -> Result<(&'a str, usize), SelectError> {
         let pos = || full_input.len() - input.len() + 1;
         let context = || {
             let c = &full_input[..pos()];
@@ -743,14 +779,18 @@ impl Value {
 
         for (i, c) in chars.enumerate() {
             if c == ']' {
-                let index_ = input[..i].parse::<usize>().map_err(|_| {
-                    SelectError::Syntax(context(), pos(), "Not a number".into())
-                })?;
+                let index_ = input[..i]
+                    .parse::<usize>()
+                    .map_err(|_| SelectError::Syntax(context(), pos(), "Not a number".into()))?;
                 input = &input[(i + 1)..];
                 index = Some(index_);
                 break;
             } else if c == '-' {
-                return Err(SelectError::Syntax(context(), pos(), "Unexpected '-'".into()));
+                return Err(SelectError::Syntax(
+                    context(),
+                    pos(),
+                    "Unexpected '-'".into(),
+                ));
             }
         }
 
@@ -896,9 +936,15 @@ impl fmt::Display for SelectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             SelectError::Key(ctx, key) => write!(f, "[{:?}] Unknown key '{}'", ctx, key),
-            SelectError::Index(ctx, index) => write!(f, "[{:?}] Index {} out of bounds", ctx, index),
-            SelectError::Primitive(ctx) => write!(f, "[{:?}] Current value is not selectable!", ctx),
-            SelectError::Syntax(ctx, pos, msg) => write!(f, "[{:?}] Syntax error at {}: {}", ctx, pos, msg),
+            SelectError::Index(ctx, index) => {
+                write!(f, "[{:?}] Index {} out of bounds", ctx, index)
+            }
+            SelectError::Primitive(ctx) => {
+                write!(f, "[{:?}] Current value is not selectable!", ctx)
+            }
+            SelectError::Syntax(ctx, pos, msg) => {
+                write!(f, "[{:?}] Syntax error at {}: {}", ctx, pos, msg)
+            }
             SelectError::End => write!(f, "Reached end of selector prematurely"),
         }
     }
@@ -916,8 +962,13 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
         let mut depth = 1;
         let mut is_dict_stack = Vec::new();
         let mut count_stack = Vec::new();
-        let ValueDisplay{
-            root, max_depth, max_list_items, max_root_bytes, max_bytes, indent_size
+        let ValueDisplay {
+            root,
+            max_depth,
+            max_list_items,
+            max_root_bytes,
+            max_bytes,
+            indent_size,
         } = self;
 
         if root.is_dict() {
@@ -1083,8 +1134,9 @@ impl<'a> fmt::Display for ValueDisplay<'a> {
             } else if let Some(b) = root.to_bytes() {
                 write!(f, "{}", repr_bytes(b, *max_root_bytes))?;
             }
-        } else if !matches!(result, Err(TraverseError::End(_))) ||
-          (matches!(result, Err(TraverseError::End(_))) && depth > 0) {
+        } else if !matches!(result, Err(TraverseError::End(_)))
+            || (matches!(result, Err(TraverseError::End(_))) && depth > 0)
+        {
             return Err(fmt::Error);
         }
 

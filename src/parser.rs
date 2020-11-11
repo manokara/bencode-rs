@@ -1,3 +1,4 @@
+use super::Value;
 use std::{
     cell::RefCell,
     collections::BTreeMap,
@@ -6,7 +7,6 @@ use std::{
     io::{Error as IoError, Read, Result as IOResult, Seek, SeekFrom},
     rc::Rc,
 };
-use super::Value;
 
 const MAX_INT_BUF: usize = 32;
 const MAX_DEPTH: usize = 32;
@@ -139,7 +139,10 @@ pub enum Stream<'a> {
 /// [`Value::Bytes`]: enum.Value.html#variant.Bytes
 /// [`Stream`]: enum.Stream.html
 /// [`ParserError`]: enum.ParserError.html
-pub fn load<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+pub fn load<'a, S>(stream: S) -> Result<Value, ParserError>
+where
+    S: Into<Stream<'a>>,
+{
     real_load(stream, State::Root, None)
 }
 
@@ -153,18 +156,19 @@ pub fn load<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream
 ///
 /// If the first character in the stream is not a 'd', we fail with `ParserError::UnexpectedRoot`.
 /// Other parsing errors may be returned following the check.
-pub fn load_dict<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+pub fn load_dict<'a, S>(stream: S) -> Result<Value, ParserError>
+where
+    S: Into<Stream<'a>>,
+{
     let mut buf = [0u8];
     let mut stream = stream.into();
 
     stream.read_exact(&mut buf)?;
 
     match buf[0].try_into() {
-        Ok(Token::Dict) => {
-            real_load(stream, State::DictKey, None)
-        }
+        Ok(Token::Dict) => real_load(stream, State::DictKey, None),
 
-        _ => Err(ParserError::UnexpectedRoot)
+        _ => Err(ParserError::UnexpectedRoot),
     }
 }
 
@@ -178,18 +182,19 @@ pub fn load_dict<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<S
 ///
 /// If the first character in the stream is not a 'l', we fail with `ParserError::UnexpectedRoot`.
 /// Other parsing errors may be returned following the check.
-pub fn load_list<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+pub fn load_list<'a, S>(stream: S) -> Result<Value, ParserError>
+where
+    S: Into<Stream<'a>>,
+{
     let mut buf = [0u8];
     let mut stream = stream.into();
 
     stream.read_exact(&mut buf)?;
 
     match buf[0].try_into() {
-        Ok(Token::List) => {
-            real_load(stream, State::ListVal, None)
-        }
+        Ok(Token::List) => real_load(stream, State::ListVal, None),
 
-        _ => Err(ParserError::UnexpectedRoot)
+        _ => Err(ParserError::UnexpectedRoot),
     }
 }
 
@@ -203,7 +208,10 @@ pub fn load_list<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<S
 ///
 /// If the first character in the stream is a 'd' or 'l', we fail with
 /// `ParserError::UnexpectedRoot`. Other parsing errors may be returned following the check.
-pub fn load_prim<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+pub fn load_prim<'a, S>(stream: S) -> Result<Value, ParserError>
+where
+    S: Into<Stream<'a>>,
+{
     let mut buf = [0u8];
     let mut stream = stream.into();
 
@@ -212,14 +220,23 @@ pub fn load_prim<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<S
     match buf[0].try_into() {
         Ok(Token::List) => Err(ParserError::UnexpectedRoot),
         Ok(Token::Dict) => Err(ParserError::UnexpectedRoot),
-        Ok(Token::End) | Ok(Token::Colon) => Err(
-            ParserError::Syntax(0, format!("Unexpected '{}' token", buf[0] as char))),
+        Ok(Token::End) | Ok(Token::Colon) => Err(ParserError::Syntax(
+            0,
+            format!("Unexpected '{}' token", buf[0] as char),
+        )),
         Ok(Token::Int) => real_load(stream, State::Int, None),
         Err(_) => real_load(stream, State::Str, Some(buf[0])),
     }
 }
 
-fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+fn real_load<'a, S>(
+    stream: S,
+    initial_state: State,
+    mut first_char: Option<u8>,
+) -> Result<Value, ParserError>
+where
+    S: Into<Stream<'a>>,
+{
     let stream = &mut stream.into();
     let file_size = stream.size();
 
@@ -288,7 +305,6 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                     next_state.push(State::RootValInt);
                 }
 
-
                 // Str value
                 Err(_) => {
                     state = State::Str;
@@ -296,9 +312,12 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                 }
 
                 // End, Colon
-                Ok(a) => return Err(
-                    ParserError::Syntax(0, format!("Unexpected '{}' token", Into::<u8>::into(a) as char))
-                ),
+                Ok(a) => {
+                    return Err(ParserError::Syntax(
+                        0,
+                        format!("Unexpected '{}' token", Into::<u8>::into(a) as char),
+                    ))
+                }
             }
         }
 
@@ -370,8 +389,12 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                         state = State::Str;
                         next_state.push(State::DictKey);
                     } else {
-                        let key = String::from_utf8(buf_str.clone())
-                            .map_err(|_| ParserError::Syntax(real_index as usize, "Dict key must be a utf8 string".into()))?;
+                        let key = String::from_utf8(buf_str.clone()).map_err(|_| {
+                            ParserError::Syntax(
+                                real_index as usize,
+                                "Dict key must be a utf8 string".into(),
+                            )
+                        })?;
                         *key_stack.last_mut().unwrap() = Some(key);
                         buf_str.clear();
                         state = State::DictVal;
@@ -392,7 +415,8 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
 
                             buf_chars.next();
                             buf_index += 1;
-                            *val_stack.last_mut().unwrap() = Some(LocalValue::DictRef(Rc::clone(&map)));
+                            *val_stack.last_mut().unwrap() =
+                                Some(LocalValue::DictRef(Rc::clone(&map)));
                             dict_stack.push(map);
                             key_stack.push(None);
                             val_stack.push(None);
@@ -411,7 +435,8 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
 
                             buf_chars.next();
                             buf_index += 1;
-                            *val_stack.last_mut().unwrap() = Some(LocalValue::ListRef(Rc::clone(&vec)));
+                            *val_stack.last_mut().unwrap() =
+                                Some(LocalValue::ListRef(Rc::clone(&vec)));
                             list_stack.push(vec);
                             item_stack.push(None);
                             state = State::ListVal;
@@ -436,13 +461,19 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                     }
 
                     // Colon, End
-                    _ => return Err(ParserError::Syntax(real_index as usize, format!("Unexpected '{}' token", c))),
+                    _ => {
+                        return Err(ParserError::Syntax(
+                            real_index as usize,
+                            format!("Unexpected '{}' token", c),
+                        ))
+                    }
                 }
             }
 
             // Process current dict value as str
             State::DictValStr => {
-                *val_stack.last_mut().unwrap() = Some(LocalValue::Owned(str_or_bytes(buf_str.clone())));
+                *val_stack.last_mut().unwrap() =
+                    Some(LocalValue::Owned(str_or_bytes(buf_str.clone())));
                 buf_str.clear();
                 state = State::DictFlush;
             }
@@ -453,10 +484,15 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                 let c = *buf_chars.next().unwrap();
 
                 if c != Token::End.into() {
-                    return Err(ParserError::Syntax(real_index as usize, "Expected 'e' token".into()));
+                    return Err(ParserError::Syntax(
+                        real_index as usize,
+                        "Expected 'e' token".into(),
+                    ));
                 }
 
-                let val = buf_int.parse::<i64>().map_err(|_| ParserError::Syntax(real_index as usize, "Invalid integer".into()))?;
+                let val = buf_int.parse::<i64>().map_err(|_| {
+                    ParserError::Syntax(real_index as usize, "Invalid integer".into())
+                })?;
                 *val_stack.last_mut().unwrap() = Some(LocalValue::Owned(Value::Int(val)));
                 buf_int.clear();
                 buf_index += 1;
@@ -520,7 +556,8 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                             let d = Rc::new(RefCell::new(BTreeMap::new()));
                             depth += 1;
 
-                            *item_stack.last_mut().unwrap() = Some(LocalValue::DictRef(Rc::clone(&d)));
+                            *item_stack.last_mut().unwrap() =
+                                Some(LocalValue::DictRef(Rc::clone(&d)));
                             buf_chars.next();
                             dict_stack.push(d);
                             key_stack.push(None);
@@ -540,7 +577,8 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                             let l = Rc::new(RefCell::new(Vec::new()));
                             depth += 1;
 
-                            *item_stack.last_mut().unwrap() = Some(LocalValue::ListRef(Rc::clone(&l)));
+                            *item_stack.last_mut().unwrap() =
+                                Some(LocalValue::ListRef(Rc::clone(&l)));
                             buf_chars.next();
                             list_stack.push(l);
                             item_stack.push(None);
@@ -567,13 +605,19 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                     }
 
                     // Colon
-                    _ => return Err(ParserError::Syntax(real_index as usize, "Unexpected ':' token".into())),
+                    _ => {
+                        return Err(ParserError::Syntax(
+                            real_index as usize,
+                            "Unexpected ':' token".into(),
+                        ))
+                    }
                 }
             }
 
             // Process current list value as str
             State::ListValStr => {
-                *item_stack.last_mut().unwrap() = Some(LocalValue::Owned(str_or_bytes(buf_str.clone())));
+                *item_stack.last_mut().unwrap() =
+                    Some(LocalValue::Owned(str_or_bytes(buf_str.clone())));
                 buf_str.clear();
                 state = State::ListFlush;
             }
@@ -584,10 +628,15 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                 let c = *buf_chars.next().unwrap();
 
                 if c != Token::End.into() {
-                    return Err(ParserError::Syntax(real_index as usize, "Expected 'e' token".into()));
+                    return Err(ParserError::Syntax(
+                        real_index as usize,
+                        "Expected 'e' token".into(),
+                    ));
                 }
 
-                let val = buf_int.parse::<i64>().map_err(|_| ParserError::Syntax(real_index as usize, "Invalid integer".into()))?;
+                let val = buf_int.parse::<i64>().map_err(|_| {
+                    ParserError::Syntax(real_index as usize, "Invalid integer".into())
+                })?;
 
                 *item_stack.last_mut().unwrap() = Some(LocalValue::Owned(Value::Int(val)));
                 buf_int.clear();
@@ -643,10 +692,15 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                     let c = *buf_chars.next().ok_or(ParserError::Eof)?;
 
                     if c != Token::Colon.into() {
-                        return Err(ParserError::Syntax(real_index as usize, "Expected ':'".into()));
+                        return Err(ParserError::Syntax(
+                            real_index as usize,
+                            "Expected ':'".into(),
+                        ));
                     }
 
-                    let buf_str_size = buf_int.parse::<u64>().map_err(|_| ParserError::Syntax(real_index as usize, "Invalid integer".into()))?;
+                    let buf_str_size = buf_int.parse::<u64>().map_err(|_| {
+                        ParserError::Syntax(real_index as usize, "Invalid integer".into())
+                    })?;
                     buf_int.clear();
                     buf_index += 1;
 
@@ -693,7 +747,10 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                 if CHARS.contains(&c) {
                     // Only allow minus at the beginning
                     if c == '-' && buf_int.len() > 0 {
-                        return Err(ParserError::Syntax(real_index as usize, "Unexpected '-'".into()));
+                        return Err(ParserError::Syntax(
+                            real_index as usize,
+                            "Unexpected '-'".into(),
+                        ));
                     }
 
                     buf_int.push(c);
@@ -705,11 +762,17 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
                     }
                 } else {
                     if buf_int.len() == 0 {
-                        return Err(ParserError::Syntax(real_index as usize, "Empty integer".into()));
+                        return Err(ParserError::Syntax(
+                            real_index as usize,
+                            "Empty integer".into(),
+                        ));
                     }
 
                     if buf_int.len() > MAX_INT_BUF {
-                        return Err(ParserError::Syntax(real_index as usize, "Integer string too big".into()));
+                        return Err(ParserError::Syntax(
+                            real_index as usize,
+                            "Integer string too big".into(),
+                        ));
                     }
 
                     state = next_state.pop().unwrap();
@@ -736,12 +799,15 @@ fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>)
             let c = *buf_chars.next().unwrap();
 
             if c != Token::End.into() {
-                return Err(ParserError::Syntax(final_index - 1, "Expected 'e' token".into()));
+                return Err(ParserError::Syntax(
+                    final_index - 1,
+                    "Expected 'e' token".into(),
+                ));
             }
 
-            let val = buf_int.parse::<i64>()
-                .map_err(|_| ParserError::Syntax(file_index as usize + buf_index,
-                                           "Invalid integer".into()))?;
+            let val = buf_int.parse::<i64>().map_err(|_| {
+                ParserError::Syntax(file_index as usize + buf_index, "Invalid integer".into())
+            })?;
             root = Some(Value::Int(val));
         }
 
@@ -787,7 +853,10 @@ impl<'a> Stream<'a> {
     /// Creates a new stream from a [`Read`]able type.
     ///
     /// [`Read`]: https://doc.rust-lang.org/std/io/trait.Read.html
-    pub fn new<T>(t: &'a mut T) -> Self where T: Read {
+    pub fn new<T>(t: &'a mut T) -> Self
+    where
+        T: Read,
+    {
         Self::Unsized(Box::new(t))
     }
 
@@ -801,7 +870,10 @@ impl<'a> Stream<'a> {
     }
 }
 
-impl<'a, T> From<&'a mut T> for Stream<'a> where T: Read + Seek {
+impl<'a, T> From<&'a mut T> for Stream<'a>
+where
+    T: Read + Seek,
+{
     fn from(t: &'a mut T) -> Self {
         let result1 = t.seek(SeekFrom::End(0));
         let result2 = t.seek(SeekFrom::Start(0));
@@ -814,7 +886,10 @@ impl<'a, T> From<&'a mut T> for Stream<'a> where T: Read + Seek {
     }
 }
 
-impl<'a, T> From<&'a T> for Stream<'a> where T: AsRef<[u8]> {
+impl<'a, T> From<&'a T> for Stream<'a>
+where
+    T: AsRef<[u8]>,
+{
     fn from(t: &'a T) -> Self {
         let slice = t.as_ref();
         Self::Slice(slice, slice.len())
@@ -849,7 +924,7 @@ impl Into<u8> for Token {
 impl TryFrom<u8> for Token {
     type Error = ();
 
-    fn try_from(c: u8) ->  Result<Token, Self::Error> {
+    fn try_from(c: u8) -> Result<Token, Self::Error> {
         const D: u8 = 'd' as u8;
         const I: u8 = 'i' as u8;
         const L: u8 = 'l' as u8;

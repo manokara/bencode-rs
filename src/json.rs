@@ -1,9 +1,6 @@
-use std::{
-    collections::BTreeMap,
-    str::Chars,
-};
-use nanoserde::{DeJson, DeJsonErr, DeJsonState, DeJsonTok, SerJson, SerJsonState};
 use super::Value;
+use nanoserde::{DeJson, DeJsonErr, DeJsonState, DeJsonTok, SerJson, SerJsonState};
+use std::{collections::BTreeMap, str::Chars};
 
 const INT_RANGE: &'static str = "0..=9223372036854775807";
 
@@ -53,7 +50,6 @@ impl DeJson for Value {
             } else {
                 Err(state.err_range(INT_RANGE))
             }
-
         } else if let DeJsonTok::I64(i) = state.tok {
             state.next_tok(input)?;
             Ok(Value::Int(i))
@@ -109,7 +105,7 @@ impl SerJson for Value {
                 state.out.push(']');
             }
 
-            Value::Bytes(v) =>  {
+            Value::Bytes(v) => {
                 let mut bytes = v.iter();
 
                 // TODO: Maybe do something more efficient than this?
@@ -155,7 +151,10 @@ mod tests {
         \"zyx\":[0,1,2]\
     }";
 
-    fn val<T>(t: T) -> Value where T: Into<Value> {
+    fn val<T>(t: T) -> Value
+    where
+        T: Into<Value>,
+    {
         t.into()
     }
 

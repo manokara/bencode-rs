@@ -1,15 +1,10 @@
+#[cfg(feature = "json")]
+mod json;
 mod parser;
-#[cfg(test)] mod tests;
-#[cfg(feature = "json")] mod json;
+#[cfg(test)]
+mod tests;
 mod value;
 
-pub use parser::{
-    ParserError, Stream,
-    load, load_dict,
-    load_list, load_prim,
-};
+pub use parser::{load, load_dict, load_list, load_prim, ParserError, Stream};
 
-pub use value::{
-    SelectError, TraverseError, TraverseAction,
-    Value, ValueAccessor, ValueDisplay,
-};
+pub use value::{SelectError, TraverseAction, TraverseError, Value, ValueAccessor, ValueDisplay};

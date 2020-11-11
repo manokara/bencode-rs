@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use super::Value;
+use std::collections::BTreeMap;
 
 const TORRENT_PATH: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/data/torrent.benc");
 const DICT_VAL_INT: &[u8] = b"d3:bari1e3:bazi2e3:fooi0ee";
@@ -17,7 +17,10 @@ fn check_value(source: &[u8], value: Value) {
     }
 }
 
-fn val<T>(t: T) -> Value where T: Into<Value> {
+fn val<T>(t: T) -> Value
+where
+    T: Into<Value>,
+{
     t.into()
 }
 
@@ -46,7 +49,7 @@ fn load_list_val_str() {
     let list = Value::List(vec![
         Value::Str("foo".into()),
         Value::Str("bar".into()),
-        Value::Str("baz".into())
+        Value::Str("baz".into()),
     ]);
 
     check_value(LIST_VAL_STR, list);
@@ -54,11 +57,7 @@ fn load_list_val_str() {
 
 #[test]
 fn load_list_val_int() {
-    let list = Value::List(vec![
-        Value::Int(0),
-        Value::Int(1),
-        Value::Int(2),
-    ]);
+    let list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
 
     check_value(LIST_VAL_INT, list);
 }
@@ -145,7 +144,9 @@ fn select_dict_mixed() {
     fghij_map.insert("wxyz".into(), Value::Int(0));
 
     let fghij_list = Value::List(vec![
-        Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map.clone()),
+        Value::Str("klmnop".into()),
+        Value::Str("qrstuv".into()),
+        Value::Dict(fghij_map.clone()),
     ]);
     let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
 
@@ -163,12 +164,24 @@ fn select_dict_mixed() {
     assert_eq!(dict.select(".bar").unwrap(), &Value::Int(1));
     assert_eq!(dict.select(".baz").unwrap(), &Value::Int(2));
     assert_eq!(dict.select(".buz").unwrap(), &Value::Dict(buz_map));
-    assert_eq!(dict.select(".buz.abcde").unwrap(), &Value::Str("fghij".into()));
+    assert_eq!(
+        dict.select(".buz.abcde").unwrap(),
+        &Value::Str("fghij".into())
+    );
     assert_eq!(dict.select(".buz.boz").unwrap(), &Value::Str("bez".into()));
     assert_eq!(dict.select(".buz.fghij").unwrap(), &fghij_list);
-    assert_eq!(dict.select(".buz.fghij[0]").unwrap(), &Value::Str("klmnop".into()));
-    assert_eq!(dict.select(".buz.fghij[1]").unwrap(), &Value::Str("qrstuv".into()));
-    assert_eq!(dict.select(".buz.fghij[2]").unwrap(), &Value::Dict(fghij_map));
+    assert_eq!(
+        dict.select(".buz.fghij[0]").unwrap(),
+        &Value::Str("klmnop".into())
+    );
+    assert_eq!(
+        dict.select(".buz.fghij[1]").unwrap(),
+        &Value::Str("qrstuv".into())
+    );
+    assert_eq!(
+        dict.select(".buz.fghij[2]").unwrap(),
+        &Value::Dict(fghij_map)
+    );
     assert_eq!(dict.select(".buz.fghij[2].wxyz").unwrap(), &Value::Int(0));
 }
 
@@ -181,7 +194,7 @@ fn load_expect() {
             if let Err(e) = $exp {
                 panic!("Failed with {:?}", e);
             }
-        }
+        };
     }
 
     macro_rules! check_err {
@@ -189,7 +202,7 @@ fn load_expect() {
             if let Ok(_) = $exp {
                 panic!("Succeeded when it was not supposed to");
             }
-        }
+        };
     }
 
     // load_dict, valid
@@ -234,7 +247,9 @@ fn value_get() {
     fghij_map.insert("wxyz".into(), Value::Int(0));
 
     let fghij_list = Value::List(vec![
-        Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map.clone()),
+        Value::Str("klmnop".into()),
+        Value::Str("qrstuv".into()),
+        Value::Dict(fghij_map.clone()),
     ]);
     let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
 
@@ -255,9 +270,18 @@ fn value_get() {
 
     let buz_abcde = dict.get("buz").and_then(|b| b.get("abcde"));
     let buz_boz = dict.get("buz").and_then(|b| b.get("boz"));
-    let fghij_0 = dict.get("buz").and_then(|b| b.get("fghij")).and_then(|f| f.get(0));
-    let fghij_1 = dict.get("buz").and_then(|b| b.get("fghij")).and_then(|f| f.get(1));
-    let wxyz = dict.get("buz").and_then(|b| b.get("fghij")).and_then(|f| f.get(2))
+    let fghij_0 = dict
+        .get("buz")
+        .and_then(|b| b.get("fghij"))
+        .and_then(|f| f.get(0));
+    let fghij_1 = dict
+        .get("buz")
+        .and_then(|b| b.get("fghij"))
+        .and_then(|f| f.get(1));
+    let wxyz = dict
+        .get("buz")
+        .and_then(|b| b.get("fghij"))
+        .and_then(|f| f.get(2))
         .and_then(|m| m.get("wxyz"));
     let zyx_0 = dict.get("zyx").and_then(|z| z.get(0));
     let zyx_1 = dict.get("zyx").and_then(|z| z.get(1));
@@ -275,7 +299,6 @@ fn value_get() {
 
 #[test]
 fn value_get_mut() {
-
     let mut root_map = BTreeMap::new();
     let mut buz_map = BTreeMap::new();
     let mut fghij_map = BTreeMap::new();
@@ -283,7 +306,9 @@ fn value_get_mut() {
     fghij_map.insert("wxyz".into(), Value::Int(0));
 
     let fghij_list = Value::List(vec![
-        Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map.clone()),
+        Value::Str("klmnop".into()),
+        Value::Str("qrstuv".into()),
+        Value::Dict(fghij_map.clone()),
     ]);
     let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
 
@@ -336,7 +361,9 @@ fn select_mut_dict_mixed() {
     fghij_map.insert("wxyz".into(), Value::Int(0));
 
     let fghij_list = Value::List(vec![
-        Value::Str("klmnop".into()), Value::Str("qrstuv".into()), Value::Dict(fghij_map.clone()),
+        Value::Str("klmnop".into()),
+        Value::Str("qrstuv".into()),
+        Value::Dict(fghij_map.clone()),
     ]);
     let zyx_list = Value::List(vec![Value::Int(0), Value::Int(1), Value::Int(2)]);
 
@@ -351,12 +378,27 @@ fn select_mut_dict_mixed() {
     let mut dict = Value::Dict(root_map);
 
     *dict.select_mut(".buz.fghij[0]").unwrap() = Value::Int(0);
-    dict.select_mut(".buz.fghij[2]").unwrap().to_map_mut().unwrap().insert("foo".into(), Value::Int(1));
-    dict.select_mut(".buz.fghij[2]").unwrap().to_map_mut().unwrap().insert("bar".into(), Value::Int(2));
-    dict.select_mut(".buz.fghij[2]").unwrap().to_map_mut().unwrap().insert("baz".into(), Value::Int(3));
+    dict.select_mut(".buz.fghij[2]")
+        .unwrap()
+        .to_map_mut()
+        .unwrap()
+        .insert("foo".into(), Value::Int(1));
+    dict.select_mut(".buz.fghij[2]")
+        .unwrap()
+        .to_map_mut()
+        .unwrap()
+        .insert("bar".into(), Value::Int(2));
+    dict.select_mut(".buz.fghij[2]")
+        .unwrap()
+        .to_map_mut()
+        .unwrap()
+        .insert("baz".into(), Value::Int(3));
 
     assert_eq!(dict.select(".buz.fghij[0]").unwrap(), &Value::Int(0));
-    assert_eq!(dict.select(".buz.fghij[1]").unwrap(), &Value::Str("qrstuv".into()));
+    assert_eq!(
+        dict.select(".buz.fghij[1]").unwrap(),
+        &Value::Str("qrstuv".into())
+    );
     assert_eq!(dict.select(".buz.fghij[2].wxyz").unwrap(), &Value::Int(0));
     assert_eq!(dict.select(".buz.fghij[2].foo").unwrap(), &Value::Int(1));
     assert_eq!(dict.select(".buz.fghij[2].bar").unwrap(), &Value::Int(2));
@@ -448,25 +490,27 @@ fn value_traverse() {
     use super::TraverseAction;
 
     let root_value = super::load(DICT_MIXED).unwrap();
-    let matching_value = root_value.traverse::<_, ()>(|_key, _index, parent, value, _selector| {
-        if let Some(value) = value {
-            // Dive into the structure
-            if value.is_container() {
-                return Ok(TraverseAction::Enter);
+    let matching_value = root_value
+        .traverse::<_, ()>(|_key, _index, parent, value, _selector| {
+            if let Some(value) = value {
+                // Dive into the structure
+                if value.is_container() {
+                    return Ok(TraverseAction::Enter);
+                }
+
+                if value == "qrstuv" {
+                    return Ok(TraverseAction::Stop);
+                }
+            } else if parent != &root_value {
+                // End of container, go back up (unless we're at the root)
+                // In this particular case this will never happen, since the path to the
+                // value is straight down.
+                return Ok(TraverseAction::Exit);
             }
 
-            if value == "qrstuv" {
-                return Ok(TraverseAction::Stop);
-            }
-        } else if parent != &root_value {
-            // End of container, go back up (unless we're at the root)
-            // In this particular case this will never happen, since the path to the
-            // value is straight down.
-            return Ok(TraverseAction::Exit);
-        }
-
-        Ok(TraverseAction::Continue)
-    }).unwrap();
+            Ok(TraverseAction::Continue)
+        })
+        .unwrap();
 
     assert_eq!(matching_value, "qrstuv");
 }
@@ -477,5 +521,8 @@ fn load_torrent() {
     let root = super::load(&mut file).unwrap();
 
     assert_eq!(root.select(".comment").unwrap(), "ManjaroLinux");
-    assert_eq!(root.select(".info.name").unwrap(), "manjaro-xfce-20.1.2-201019-linux58.iso");
+    assert_eq!(
+        root.select(".info.name").unwrap(),
+        "manjaro-xfce-20.1.2-201019-linux58.iso"
+    );
 }
