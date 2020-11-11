@@ -6,11 +6,11 @@ Everything is documented, but I don't think I'm going to publish this to crates.
 
 ## Building
 
-Add the following to your `dependencies` section:
+Add one of the following to your `dependencies` section:
 
 ```
 # Latest release
-bencode = { git = "https://github.com/manokara/bencode-rs", rev = "v0.7.0" }
+bencode = { git = "https://github.com/manokara/bencode-rs", rev = "v0.8.0" }
 
 # Latest change
 bencode = { git = "https://github.com/manokara/bencode-rs" }
@@ -18,7 +18,7 @@ bencode = { git = "https://github.com/manokara/bencode-rs" }
 
 ### Enable JSON serialization
 
-The library has a `json` feature (not yet released) that uses [nanoserde] to convert Values to and from JSON, which might be useful in some use cases. Add the feature to the `features` list of the crate definition above, like:
+The library has a `json` feature that uses [nanoserde] to convert Values to and from JSON, which might be useful in some use cases. Add the feature to the `features` list of the crate definition above, like:
 
 ```
 bencode = { ..., features = ["json"] }
