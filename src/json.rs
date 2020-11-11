@@ -1,8 +1,9 @@
 use super::Value;
 use nanoserde::{DeJson, DeJsonErr, DeJsonState, DeJsonTok, SerJson, SerJsonState};
-use std::{collections::BTreeMap, str::Chars};
+use std::{collections::BTreeMap, ops::Range, str::Chars};
 
 const INT_RANGE: &'static str = "0..=9223372036854775807";
+const STR_BOUNDS: Range<char> = 32 as char..128 as char;
 
 impl DeJson for Value {
     fn de_json(state: &mut DeJsonState, input: &mut Chars) -> Result<Self, DeJsonErr> {
@@ -38,7 +39,7 @@ impl DeJson for Value {
             let val = state.as_string()?;
             state.next_tok(input)?;
 
-            if val.chars().all(char::is_alphanumeric) {
+            if val.chars().all(|c| STR_BOUNDS.contains(&c) || c == '\r' || c == '\n') {
                 Ok(Value::Str(val))
             } else {
                 Ok(Value::Bytes(val.into_bytes()))
@@ -112,7 +113,7 @@ impl SerJson for Value {
                 while let Some(b) = bytes.next() {
                     let c = *b as char;
 
-                    if c.is_alphanumeric() {
+                    if STR_BOUNDS.contains(&c) {
                         state.out.push(c);
                     } else {
                         match c {
@@ -248,5 +249,19 @@ mod tests {
         assert_eq!(json4, LIST_NESTED);
         assert_eq!(json5, LIST_NEGATIVES);
         assert_eq!(json6, DICT_MIXED);
+    }
+
+    #[test]
+    fn str_or_bytes() {
+        let json1 = "\"hello world\"";
+        let json2 = "\"/home/user/Downloads/foo.txt\"";
+        let json3 = "\"\u{1}\u{2}\u{3}\"";
+        let val1 = val("hello world");
+        let val2 = val("/home/user/Downloads/foo.txt");
+        let val3 = val(b"\x01\x02\x03" as &[u8]);
+
+        assert_eq!(Value::deserialize_json(json1).unwrap(), val1);
+        assert_eq!(Value::deserialize_json(json2).unwrap(), val2);
+        assert_eq!(Value::deserialize_json(json3).unwrap(), val3);
     }
 }

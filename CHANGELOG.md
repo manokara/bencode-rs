@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- json: Fixed valid strings being considered bytes
+
 ## [0.8.0] - 2020-11-11
 
 ### Added
