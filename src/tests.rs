@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use super::Value;
 
+const TORRENT_PATH: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/data/torrent.benc");
 const DICT_VAL_INT: &[u8] = b"d3:bari1e3:bazi2e3:fooi0ee";
 const LIST_VAL_STR: &[u8] = b"l3:foo3:bar3:baze";
 const LIST_VAL_INT: &[u8] = b"li0ei1ei2ee";
@@ -10,7 +11,7 @@ const DICT_MIXED: &[u8] = b"d3:bari1e3:bazi2e3:buzd5:abcde5:fghij3:boz\
                             3:bez5:fghijl6:klmnop6:qrstuvd4:wxyzi0eeee3:fooi0e3:zyxli0ei1ei2eee";
 
 fn check_value(source: &[u8], value: Value) {
-    match super::load_str(source) {
+    match super::load(source) {
         Ok(v) => assert_eq!(v, value),
         Err(e) => panic!("Got {:?}", e),
     }
@@ -173,14 +174,55 @@ fn select_dict_mixed() {
 
 #[test]
 fn load_expect() {
-    use super::{load_dict_str, load_list_str};
+    use super::{load_dict, load_list, load_prim};
 
-    assert_eq!(load_dict_str(LIST_NESTED).is_ok(), false);
-    assert_eq!(load_dict_str(LIST_VAL_INT).is_ok(), false);
-    assert_eq!(load_dict_str(LIST_VAL_STR).is_ok(), false);
-    assert_eq!(load_dict_str(LIST_VAL_STR).is_ok(), false);
-    assert_eq!(load_list_str(DICT_VAL_INT).is_ok(), false);
-    assert_eq!(load_list_str(DICT_MIXED).is_ok(), false);
+    macro_rules! check_ok {
+        ($exp:expr) => {
+            if let Err(e) = $exp {
+                panic!("Failed with {:?}", e);
+            }
+        }
+    }
+
+    macro_rules! check_err {
+        ($exp:expr) => {
+            if let Ok(_) = $exp {
+                panic!("Succeeded when it was not supposed to");
+            }
+        }
+    }
+
+    // load_dict, valid
+    check_ok!(load_dict(DICT_VAL_INT));
+    check_ok!(load_dict(DICT_MIXED));
+
+    // load_dict, invalid
+    check_err!(load_dict(LIST_VAL_INT));
+    check_err!(load_dict(LIST_VAL_STR));
+    check_err!(load_dict(LIST_NESTED));
+    check_err!(load_dict(b"i0e"));
+    check_err!(load_dict(b"3:foo"));
+
+    // load_list, valid
+    check_ok!(load_list(LIST_VAL_INT));
+    check_ok!(load_list(LIST_VAL_STR));
+    check_ok!(load_list(LIST_NESTED));
+
+    // load_list, invalid
+    check_err!(load_list(DICT_VAL_INT));
+    check_err!(load_list(DICT_MIXED));
+    check_err!(load_list(b"i0e"));
+    check_err!(load_list(b"3:foo"));
+
+    // load_prim, valid
+    check_ok!(load_prim(b"i0e"));
+    check_ok!(load_prim(b"3:foo"));
+
+    // load_prim, invalid
+    check_err!(load_prim(DICT_MIXED));
+    check_err!(load_prim(LIST_VAL_INT));
+    check_err!(load_prim(LIST_VAL_STR));
+    check_err!(load_prim(LIST_NESTED));
 }
 
 #[test]
@@ -405,7 +447,7 @@ fn value_encode() {
 fn value_traverse() {
     use super::TraverseAction;
 
-    let root_value = super::load_str(DICT_MIXED).unwrap();
+    let root_value = super::load(DICT_MIXED).unwrap();
     let matching_value = root_value.traverse::<_, ()>(|_key, _index, parent, value, _selector| {
         if let Some(value) = value {
             // Dive into the structure
@@ -427,4 +469,13 @@ fn value_traverse() {
     }).unwrap();
 
     assert_eq!(matching_value, "qrstuv");
+}
+
+#[test]
+fn load_torrent() {
+    let mut file = std::fs::File::open(TORRENT_PATH).unwrap();
+    let root = super::load(&mut file).unwrap();
+
+    assert_eq!(root.select(".comment").unwrap(), "ManjaroLinux");
+    assert_eq!(root.select(".info.name").unwrap(), "manjaro-xfce-20.1.2-201019-linux58.iso");
 }

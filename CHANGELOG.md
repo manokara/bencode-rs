@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Allow Value references to be compared to owned integer
 - Comparing Values with byte slices and vecs
 - Benchmarks
-
+- Stream wrapper
+- Recursion limit if the stream has no known size
 
 ### Changed
 
@@ -28,10 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use byte slices in load_str() functions
 - Change the concept of "context" in traverse() and select()
 - The `value` argument of the `Value::traverse` closure is now optional.
+- Now `load()` handles both `Read`able types and slices.
 
 ### Removed
 
 - `Dict` and `Done` states in the parser.
+- `load_str`, `load_dict_str`, `load_list_str` and `load_prim_str` functions.
 
 ## [0.7.0] - 2020-11-06
 

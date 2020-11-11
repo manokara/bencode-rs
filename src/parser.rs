@@ -3,12 +3,13 @@ use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
     fmt,
-    io::{Cursor, Error as IoError, Read, Seek, SeekFrom},
+    io::{Error as IoError, Read, Result as IOResult, Seek, SeekFrom},
     rc::Rc,
 };
 use super::Value;
 
 const MAX_INT_BUF: usize = 32;
+const MAX_DEPTH: usize = 32;
 const CHUNK_SIZE: u64 = 8096;
 
 enum Token {
@@ -83,8 +84,34 @@ pub enum ParserError {
     /// [`load_dict`]: fn.load_dict.html
     /// [`load_list`]: fn.load_list.html
     UnexpectedRoot,
+
+    /// Too many nested structures
+    ///
+    /// This can only happen if the stream has no size. See [`Stream`].
+    ///
+    /// [`Stream`]: enum.Stream.html
+    RecursionLimit,
 }
 
+/// Wrapper for the input stream used in [`load`].
+///
+/// Sized streams are slices and any type that implements [`Read`] and [`Seek`]. In the latter, if
+/// there are IO errors of any kind when seeking, the stream will be considered unsized.
+///
+/// Ideally, types that only implement [`Read`] would be converted automatically, but that would
+/// require [specialization] which is very unstable. You must use Stream explicitly with the
+/// [`new`] method.
+///
+/// [`load`]: fn.load.html
+/// [`Read`]: https://doc.rust-lang.org/std/io/trait.Read.html
+/// [`Seek`]: https://doc.rust-lang.org/std/io/trait.Seek.html
+/// [specialization]: https://github.com/rust-lang/rfcs/blob/master/text/1210-impl-specialization.md
+/// [`new`]: #method.new
+pub enum Stream<'a> {
+    Sized(Box<&'a mut dyn Read>, usize),
+    Slice(&'a [u8], usize),
+    Unsized(Box<&'a mut dyn Read>),
+}
 
 /// Parse a bencode data structure from a stream.
 ///
@@ -94,7 +121,11 @@ pub enum ParserError {
 /// The parser will try to convert bytestrings to UTF-8 and return a [`Value::Str`] variant if the
 /// conversion is succesful, otherwise the value will be [`Value::Bytes`].
 ///
-/// If you're dealing with byte slices, you can use the [`load_str`] function.
+/// # Stream
+///
+/// Depending on the input stream, the parser will behave differently. If the stream is sized (see
+/// [`Stream`]) the parser will try to run until EOF, otherwise it will run as long as it does not
+/// exceed the recursion limit (32 containers deep).
 ///
 /// # Errors
 ///
@@ -106,22 +137,104 @@ pub enum ParserError {
 /// [`load_prim`]: fn.load_prim.html
 /// [`Value::Str`]: enum.Value.html#variant.Str
 /// [`Value::Bytes`]: enum.Value.html#variant.Bytes
-/// [`load_str`]: fn.load_str.html
+/// [`Stream`]: enum.Stream.html
 /// [`ParserError`]: enum.ParserError.html
-pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
-    let file_size = stream.seek(SeekFrom::End(0))?;
-    stream.seek(SeekFrom::Start(0))?;
+pub fn load<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+    real_load(stream, State::Root, None)
+}
 
-    if file_size == 0 {
-        return Err(ParserError::Empty);
+/// Parse a bencode stream expecting a list as the root value.
+///
+/// If your application requires the root value to a be a dict and you want to avoid unnecessary
+/// allocations, this function will check if the first token in the stream is 'd' and then actually
+/// parse the stream.
+///
+/// # Errors
+///
+/// If the first character in the stream is not a 'd', we fail with `ParserError::UnexpectedRoot`.
+/// Other parsing errors may be returned following the check.
+pub fn load_dict<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+    let mut buf = [0u8];
+    let mut stream = stream.into();
+
+    stream.read_exact(&mut buf)?;
+
+    match buf[0].try_into() {
+        Ok(Token::Dict) => {
+            real_load(stream, State::DictKey, None)
+        }
+
+        _ => Err(ParserError::UnexpectedRoot)
+    }
+}
+
+/// Parse a bencode stream expecting a list as the root value.
+///
+/// If your application requires the root value to a be a list and you want to avoid unnecessary
+/// allocations, this function will check if the first token in the stream is 'l' and then actually
+/// parse the stream.
+///
+/// # Errors
+///
+/// If the first character in the stream is not a 'l', we fail with `ParserError::UnexpectedRoot`.
+/// Other parsing errors may be returned following the check.
+pub fn load_list<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+    let mut buf = [0u8];
+    let mut stream = stream.into();
+
+    stream.read_exact(&mut buf)?;
+
+    match buf[0].try_into() {
+        Ok(Token::List) => {
+            real_load(stream, State::ListVal, None)
+        }
+
+        _ => Err(ParserError::UnexpectedRoot)
+    }
+}
+
+/// Parse a bencode stream expecting a primitive as the root value.
+///
+/// If your application requires the root value to a be a primitive and you want to avoid
+/// unnecessary allocations, this function will check if the first token in the stream is not one of
+/// the container tokens ('d' or 'l') and then actually parse the stream.
+///
+/// # Errors
+///
+/// If the first character in the stream is a 'd' or 'l', we fail with
+/// `ParserError::UnexpectedRoot`. Other parsing errors may be returned following the check.
+pub fn load_prim<'a, S>(stream: S) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+    let mut buf = [0u8];
+    let mut stream = stream.into();
+
+    stream.read_exact(&mut buf)?;
+
+    match buf[0].try_into() {
+        Ok(Token::List) => Err(ParserError::UnexpectedRoot),
+        Ok(Token::Dict) => Err(ParserError::UnexpectedRoot),
+        Ok(Token::End) | Ok(Token::Colon) => Err(
+            ParserError::Syntax(0, format!("Unexpected '{}' token", buf[0] as char))),
+        Ok(Token::Int) => real_load(stream, State::Int, None),
+        Err(_) => real_load(stream, State::Str, Some(buf[0])),
+    }
+}
+
+fn real_load<'a, S>(stream: S, initial_state: State, mut first_char: Option<u8>) -> Result<Value, ParserError> where S: Into<Stream<'a>> {
+    let stream = &mut stream.into();
+    let file_size = stream.size();
+
+    if let Some(&size) = file_size.as_ref() {
+        if size == 0 {
+            return Err(ParserError::Empty);
+        }
     }
 
     let mut file_index = 0u64;
     let mut buf_index = 0usize;
-    let mut state = State::Root;
+    let mut state = initial_state;
     let mut next_state = Vec::new();
-    let mut buf = Vec::new();
-    let mut buf_chars = buf.iter().peekable();
+    let mut buf = Vec::<u8>::with_capacity(CHUNK_SIZE as usize);
+    let mut buf_chars;
     let mut buf_str = Vec::new();
     let mut buf_str_remainder = 0u64;
     let mut buf_int = String::new();
@@ -130,12 +243,101 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
     let mut item_stack = Vec::new();
     let mut dict_stack = Vec::new();
     let mut list_stack = Vec::new();
+    let mut depth = 0;
     let root;
 
-    while file_index + (buf_index as u64) < file_size {
+    stream.take(CHUNK_SIZE).read_to_end(&mut buf)?;
+    buf_chars = buf.iter().peekable();
+
+    // Initial state
+    match state {
+        State::Root => {
+            let c = **buf_chars.peek().unwrap();
+
+            match c.try_into() {
+                // Dict value
+                Ok(Token::Dict) => {
+                    buf_chars.next();
+                    buf_index += 1;
+                    depth += 1;
+                    dict_stack.push(Rc::new(RefCell::new(BTreeMap::new())));
+                    key_stack.push(None);
+                    val_stack.push(None);
+
+                    state = State::DictKey;
+                    next_state.push(State::RootValDict);
+                }
+
+                // List value
+                Ok(Token::List) => {
+                    buf_chars.next();
+                    buf_index += 1;
+                    depth += 1;
+                    list_stack.push(Rc::new(RefCell::new(Vec::new())));
+                    item_stack.push(None);
+
+                    state = State::ListVal;
+                    next_state.push(State::RootValList);
+                }
+
+                // Int value
+                Ok(Token::Int) => {
+                    state = State::Int;
+                    buf_chars.next();
+                    buf_index += 1;
+                    next_state.push(State::RootValInt);
+                }
+
+
+                // Str value
+                Err(_) => {
+                    state = State::Str;
+                    next_state.push(State::RootValStr);
+                }
+
+                // End, Colon
+                Ok(a) => return Err(
+                    ParserError::Syntax(0, format!("Unexpected '{}' token", Into::<u8>::into(a) as char))
+                ),
+            }
+        }
+
+        // load_dict
+        State::DictKey => {
+            depth += 1;
+            dict_stack.push(Rc::new(RefCell::new(BTreeMap::new())));
+            key_stack.push(None);
+            val_stack.push(None);
+
+            next_state.push(State::RootValDict);
+        }
+
+        // load_list
+        State::ListVal => {
+            depth += 1;
+            list_stack.push(Rc::new(RefCell::new(Vec::new())));
+            item_stack.push(None);
+
+            next_state.push(State::RootValList);
+        }
+
+        // load_prim
+        State::Int => {
+            next_state.push(State::RootValInt);
+        }
+
+        // load_prim
+        State::Str => {
+            next_state.push(State::RootValStr);
+        }
+
+        _ => unreachable!(),
+    }
+
+    loop {
         let real_index = file_index + buf_index as u64;
 
-        if real_index >= (file_index + buf.len() as u64) && real_index < file_size {
+        if real_index >= (file_index + buf.len() as u64) {
             buf.clear();
             stream.take(CHUNK_SIZE).read_to_end(&mut buf)?;
             buf_chars = buf.iter().peekable();
@@ -144,60 +346,15 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
         }
 
         match state {
-            State::Root => {
-                let c = **buf_chars.peek().unwrap();
+            State::Root => unreachable!(),
 
-                match c.try_into() {
-                    // Dict value
-                    Ok(Token::Dict) => {
-                        buf_chars.next();
-                        buf_index += 1;
-                        dict_stack.push(Rc::new(RefCell::new(BTreeMap::new())));
-                        key_stack.push(None);
-                        val_stack.push(None);
-
-                        state = State::DictKey;
-                        next_state.push(State::RootValDict);
-                    }
-
-                    // List value
-                    Ok(Token::List) => {
-                        buf_chars.next();
-                        buf_index += 1;
-                        list_stack.push(Rc::new(RefCell::new(Vec::new())));
-                        item_stack.push(None);
-
-                        state = State::ListVal;
-                        next_state.push(State::RootValList);
-                    }
-
-                    // Int value
-                    Ok(Token::Int) => {
-                        state = State::Int;
-                        buf_chars.next();
-                        buf_index += 1;
-                        next_state.push(State::RootValInt);
-                    }
-
-
-                    // Str value
-                    Err(_) => {
-                        state = State::Str;
-                        next_state.push(State::RootValStr);
-                    }
-
-                    // End, Colon
-                    Ok(a) => return Err(
-                        ParserError::Syntax(real_index as usize,
-                                      format!("Unexpected '{}' token", Into::<u8>::into(a) as char))
-                    ),
+            // Root states
+            State::RootValInt | State::RootValStr | State::RootValDict | State::RootValList => {
+                if state == State::RootValInt {
+                    buf_index += 1;
                 }
-            }
 
-            // Root int value
-            // Just increase buf_index here so the loop can be broken
-            State::RootValInt => {
-                buf_index += 1;
+                break;
             }
 
             // Read dict key or end the dict if it's empty
@@ -229,31 +386,39 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
                 match c.try_into() {
                     // Dict value
                     Ok(Token::Dict) => {
-                        let map = Rc::new(RefCell::new(BTreeMap::new()));
+                        if depth < MAX_DEPTH || file_size.is_some() {
+                            let map = Rc::new(RefCell::new(BTreeMap::new()));
+                            depth += 1;
 
-                        buf_chars.next();
-                        buf_index += 1;
-                        *val_stack.last_mut().unwrap() = Some(LocalValue::DictRef(Rc::clone(&map)));
-                        dict_stack.push(map);
-                        key_stack.push(None);
-                        val_stack.push(None);
-
-                        state = State::DictKey;
-                        next_state.push(State::DictValDict);
+                            buf_chars.next();
+                            buf_index += 1;
+                            *val_stack.last_mut().unwrap() = Some(LocalValue::DictRef(Rc::clone(&map)));
+                            dict_stack.push(map);
+                            key_stack.push(None);
+                            val_stack.push(None);
+                            state = State::DictKey;
+                            next_state.push(State::DictValDict);
+                        } else if file_size.is_none() && depth == MAX_DEPTH {
+                            return Err(ParserError::RecursionLimit);
+                        }
                     }
 
                     // List value
                     Ok(Token::List) => {
-                        let vec = Rc::new(RefCell::new(Vec::new()));
+                        if depth < MAX_DEPTH || file_size.is_some() {
+                            let vec = Rc::new(RefCell::new(Vec::new()));
+                            depth += 1;
 
-                        buf_chars.next();
-                        buf_index += 1;
-                        *val_stack.last_mut().unwrap() = Some(LocalValue::ListRef(Rc::clone(&vec)));
-                        list_stack.push(vec);
-                        item_stack.push(None);
-
-                        state = State::ListVal;
-                        next_state.push(State::DictValList);
+                            buf_chars.next();
+                            buf_index += 1;
+                            *val_stack.last_mut().unwrap() = Some(LocalValue::ListRef(Rc::clone(&vec)));
+                            list_stack.push(vec);
+                            item_stack.push(None);
+                            state = State::ListVal;
+                            next_state.push(State::DictValList);
+                        } else if file_size.is_none() && depth == MAX_DEPTH {
+                            return Err(ParserError::RecursionLimit);
+                        }
                     }
 
                     // Int value
@@ -306,6 +471,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
                 *val_stack.last_mut().unwrap() = Some(LocalValue::DictRef(dict));
                 key_stack.pop().unwrap();
                 val_stack.pop().unwrap();
+                depth -= 1;
                 state = State::DictFlush;
             }
 
@@ -315,6 +481,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
 
                 *val_stack.last_mut().unwrap() = Some(LocalValue::ListRef(list));
                 item_stack.pop().unwrap();
+                depth -= 1;
                 state = State::DictFlush;
             }
 
@@ -349,30 +516,40 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
 
                     // Dict value
                     Ok(Token::Dict) => {
-                        let d = Rc::new(RefCell::new(BTreeMap::new()));
+                        if depth < MAX_DEPTH || file_size.is_some() {
+                            let d = Rc::new(RefCell::new(BTreeMap::new()));
+                            depth += 1;
 
-                        *item_stack.last_mut().unwrap() = Some(LocalValue::DictRef(Rc::clone(&d)));
-                        buf_chars.next();
-                        dict_stack.push(d);
-                        key_stack.push(None);
-                        val_stack.push(None);
-                        buf_index += 1;
+                            *item_stack.last_mut().unwrap() = Some(LocalValue::DictRef(Rc::clone(&d)));
+                            buf_chars.next();
+                            dict_stack.push(d);
+                            key_stack.push(None);
+                            val_stack.push(None);
+                            buf_index += 1;
 
-                        state = State::DictKey;
-                        next_state.push(State::ListValDict);
+                            state = State::DictKey;
+                            next_state.push(State::ListValDict);
+                        } else if file_size.is_none() && depth == MAX_DEPTH {
+                            return Err(ParserError::RecursionLimit);
+                        }
                     }
 
                     // List value
                     Ok(Token::List) => {
-                        let l = Rc::new(RefCell::new(Vec::new()));
+                        if depth < MAX_DEPTH || file_size.is_some() {
+                            let l = Rc::new(RefCell::new(Vec::new()));
+                            depth += 1;
 
-                        *item_stack.last_mut().unwrap() = Some(LocalValue::ListRef(Rc::clone(&l)));
-                        buf_chars.next();
-                        list_stack.push(l);
-                        item_stack.push(None);
-                        buf_index += 1;
+                            *item_stack.last_mut().unwrap() = Some(LocalValue::ListRef(Rc::clone(&l)));
+                            buf_chars.next();
+                            list_stack.push(l);
+                            item_stack.push(None);
+                            buf_index += 1;
 
-                        next_state.push(State::ListValList);
+                            next_state.push(State::ListValList);
+                        } else if file_size.is_none() && depth == MAX_DEPTH {
+                            return Err(ParserError::RecursionLimit);
+                        }
                     }
 
                     // Int value
@@ -507,7 +684,11 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
             State::Int => {
                 const CHARS: &[char] = &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-'];
 
-                let c = **buf_chars.peek().ok_or(ParserError::Eof)? as char;
+                let (advance, c) = if let Some(b) = first_char.take() {
+                    (false, b as char)
+                } else {
+                    (true, **buf_chars.peek().ok_or(ParserError::Eof)? as char)
+                };
 
                 if CHARS.contains(&c) {
                     // Only allow minus at the beginning
@@ -516,8 +697,12 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
                     }
 
                     buf_int.push(c);
-                    buf_chars.next();
-                    buf_index += 1;
+
+                    // Only advance iterator if c didn't come from first_char
+                    if advance {
+                        buf_chars.next();
+                        buf_index += 1;
+                    }
                 } else {
                     if buf_int.len() == 0 {
                         return Err(ParserError::Syntax(real_index as usize, "Empty integer".into()));
@@ -530,10 +715,16 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
                     state = next_state.pop().unwrap();
                 }
             }
+        }
 
-            _ => unreachable!(),
+        if let Some(&size) = file_size.as_ref() {
+            if file_index + buf_index as u64 == size as u64 {
+                break;
+            }
         }
     }
+
+    let final_index = file_index as usize + buf_index;
 
     if next_state.len() > 0 {
         return Err(ParserError::Eof);
@@ -545,7 +736,7 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
             let c = *buf_chars.next().unwrap();
 
             if c != Token::End.into() {
-                return Err(ParserError::Syntax(file_size as usize - 1, "Expected 'e' token".into()));
+                return Err(ParserError::Syntax(final_index - 1, "Expected 'e' token".into()));
             }
 
             let val = buf_int.parse::<i64>()
@@ -574,133 +765,6 @@ pub fn load(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
     Ok(root.unwrap())
 }
 
-/// Parse a bencode data structure from a string.
-///
-/// This is a helper function that wraps the slice in a Cursor and calls [`load`].
-///
-/// [`load`]: fn.load.html
-pub fn load_str(s: &[u8]) -> Result<Value, ParserError> {
-    let mut cursor = Cursor::new(s);
-    load(&mut cursor)
-}
-
-/// Parse a bencode stream expecting a dict as the root value.
-///
-/// If your application requires the root value to a be a dict and you want to avoid unnecessary
-/// allocations, this function will check if the first token in the stream is 'd' and then actually
-/// parse the stream.
-///
-/// If you're dealing with byte slices, you can use the [`load_dict_str`] function.
-///
-/// # Errors
-///
-/// If the first character in the stream is not a 'd', we fail with `ParserError::UnexpectedRoot`.
-/// Other parsing errors may be returned following the check.
-///
-/// [`load_dict_str`]: fn.load_dict_str.html
-pub fn load_dict(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
-    let mut buf = [0u8];
-
-    stream.read_exact(&mut buf)?;
-
-    match buf[0].try_into() {
-        Ok(Token::Dict) => {
-            stream.seek(SeekFrom::Start(0))?;
-            load(stream)
-        }
-
-        _ => Err(ParserError::UnexpectedRoot)
-    }
-}
-
-/// Parse a bencode string expecting a dict as the root value.
-///
-/// This is a helper function that wraps the slice in a Cursor and calls [`load_dict`].
-///
-/// [`load_dict`]: fn.load_dict.html
-pub fn load_dict_str(s: &[u8]) -> Result<Value, ParserError> {
-    let mut cursor = Cursor::new(s);
-    load_dict(&mut cursor)
-}
-
-/// Parse a bencode stream expecting a list as the root value.
-///
-/// If your application requires the root value to a be a list and you want to avoid unnecessary
-/// allocations, this function will check if the first token in the stream is 'l' and then actually
-/// parse the stream.
-///
-/// If you're dealing with byte slices, you can use the [`load_list_str`] function.
-///
-/// # Errors
-///
-/// If the first character in the stream is not a 'l', we fail with `ParserError::UnexpectedRoot`.
-/// Other parsing errors may be returned following the check.
-///
-/// [`load_list_str`]: fn.load_list_str.html
-pub fn load_list(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
-    let mut buf = [0u8];
-
-    stream.read_exact(&mut buf)?;
-
-    match buf[0].try_into() {
-        Ok(Token::List) => {
-            stream.seek(SeekFrom::Start(0))?;
-            load(stream)
-        }
-
-        _ => Err(ParserError::UnexpectedRoot)
-    }
-}
-
-/// Parse a bencode string expecting a list as the root value.
-///
-/// This is a helper function that wraps the slice in a Cursor and calls [`load_list`].
-///
-/// [`load_dict`]: fn.load_dict.html
-pub fn load_list_str(s: &[u8]) -> Result<Value, ParserError> {
-    let mut cursor = Cursor::new(s);
-    load_list(&mut cursor)
-}
-
-/// Parse a bencode stream expecting a primitive as the root value.
-///
-/// If your application requires the root value to a be a primitive and you want to avoid
-/// unnecessary allocations, this function will check if the first token in the stream is not one of
-/// the container tokens ('d' or 'e') and then actually parse the stream.
-///
-/// If you're dealing with byte slices, you can use the [`load_prim_str`] function.
-///
-/// # Errors
-///
-/// If the first character in the stream is a 'd' or 'l', we fail with
-/// `ParserError::UnexpectedRoot`. Other parsing errors may be returned following the check.
-///
-/// [`load_prim_str`]: fn.load_prim_str.html
-pub fn load_prim(stream: &mut (impl Read + Seek)) -> Result<Value, ParserError> {
-    let mut buf = [0u8];
-
-    stream.read_exact(&mut buf)?;
-
-    match buf[0].try_into() {
-        Ok(Token::List) => Err(ParserError::UnexpectedRoot),
-        Ok(Token::Dict) => Err(ParserError::UnexpectedRoot),
-        _ => {
-            stream.seek(SeekFrom::Start(0))?;
-            load(stream)
-        }
-    }
-}
-
-/// Parse a bencode string expecting a primitive as the root value.
-///
-/// This is a helper function that wraps the slice in a Cursor and calls [`load_prim`].
-///
-/// [`load_prim`]: fn.load_prim.html
-pub fn load_prim_str(s: &[u8]) -> Result<Value, ParserError> {
-    let mut cursor = Cursor::new(s);
-    load_prim(&mut cursor)
-}
-
 /// Try to convert a raw buffer to utf8 and return the appropriate Value.
 fn str_or_bytes(vec: Vec<u8>) -> Value {
     match String::from_utf8(vec) {
@@ -716,6 +780,51 @@ impl LocalValue {
             Self::ListRef(r) => Value::List(r.borrow().clone()),
             Self::Owned(v) => v.clone(),
         }
+    }
+}
+
+impl<'a> Stream<'a> {
+    /// Creates a new stream from a [`Read`]able type.
+    ///
+    /// [`Read`]: https://doc.rust-lang.org/std/io/trait.Read.html
+    pub fn new<T>(t: &'a mut T) -> Self where T: Read {
+        Self::Unsized(Box::new(t))
+    }
+
+    /// Returns the size of this stream, if possible.
+    pub fn size(&self) -> Option<usize> {
+        match self {
+            Self::Sized(_, size) => Some(*size),
+            Self::Slice(_, size) => Some(*size),
+            Self::Unsized(_) => None,
+        }
+    }
+}
+
+impl<'a, T> From<&'a mut T> for Stream<'a> where T: Read + Seek {
+    fn from(t: &'a mut T) -> Self {
+        let result1 = t.seek(SeekFrom::End(0));
+        let result2 = t.seek(SeekFrom::Start(0));
+        let result = result1.or(result2);
+
+        match result {
+            Ok(size) => Self::Sized(Box::new(t), size as usize),
+            Err(_) => Self::Unsized(Box::new(t)),
+        }
+    }
+}
+
+impl<'a, T> From<&'a T> for Stream<'a> where T: AsRef<[u8]> {
+    fn from(t: &'a T) -> Self {
+        let slice = t.as_ref();
+        Self::Slice(slice, slice.len())
+    }
+}
+
+impl<'a> From<&'a [u8]> for Stream<'a> {
+    fn from(s: &'a [u8]) -> Self {
+        let slice = s.as_ref();
+        Self::Slice(slice, slice.len())
     }
 }
 
@@ -766,6 +875,27 @@ impl fmt::Display for ParserError {
             ParserError::Syntax(n, s) => write!(f, "Syntax error at {}: {}", n + 1, s),
             ParserError::Eof => write!(f, "Unexpected end of file reached"),
             ParserError::UnexpectedRoot => write!(f, "Unexpected root value"),
+            ParserError::RecursionLimit => write!(f, "Too many nested structures"),
+        }
+    }
+}
+
+impl<'a> fmt::Debug for Stream<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Stream::Sized(_, size) => write!(f, "Sized({})", size),
+            Stream::Slice(_, size) => write!(f, "Slice({})", size),
+            Stream::Unsized(_) => write!(f, "Unsized"),
+        }
+    }
+}
+
+impl<'a> Read for Stream<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
+        match self {
+            Self::Sized(stream, _) => stream.read(buf),
+            Self::Slice(slice, _) => slice.read(buf),
+            Self::Unsized(stream) => stream.read(buf),
         }
     }
 }
