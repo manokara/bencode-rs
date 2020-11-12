@@ -39,7 +39,10 @@ impl DeJson for Value {
             let val = state.as_string()?;
             state.next_tok(input)?;
 
-            if val.chars().all(|c| STR_BOUNDS.contains(&c) || c == '\r' || c == '\n') {
+            if val
+                .chars()
+                .all(|c| STR_BOUNDS.contains(&c) || c == '\r' || c == '\n')
+            {
                 Ok(Value::Str(val))
             } else {
                 Ok(Value::Bytes(val.into_bytes()))
