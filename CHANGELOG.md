@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - json: Fixed valid strings being considered bytes
-- parser: Throw syntax error if there are trailin data
+- parser: Throw syntax error if there are trailing data
 
 ## [0.8.0] - 2020-11-11
 
