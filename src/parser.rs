@@ -237,6 +237,8 @@ fn real_load<'a, S>(
 where
     S: Into<Stream<'a>>,
 {
+    const NOTHING: &[u8] = b"";
+
     let stream = &mut stream.into();
     let file_size = stream.size();
 
@@ -826,6 +828,22 @@ where
         }
 
         _ => unreachable!(),
+    }
+
+    buf.splice(0..buf_index, NOTHING.iter().cloned());
+
+    if buf.len() > 0 {
+        return Err(ParserError::Syntax(
+            file_index as usize + buf_index,
+            "Trailing data".into(),
+        ));
+    }
+
+    if stream.bytes().next().is_some() {
+        return Err(ParserError::Syntax(
+            file_index as usize + buf_index,
+            "Trailing data".into(),
+        ));
     }
 
     Ok(root.unwrap())

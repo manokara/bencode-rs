@@ -526,3 +526,19 @@ fn load_torrent() {
         "manjaro-xfce-20.1.2-201019-linux58.iso"
     );
 }
+
+#[test]
+#[should_panic]
+fn trailing_data() {
+    const DATA1: &[u8] = b"d3:foo3:bari0e";
+    const DATA2: &[u8] = b"d3:foo3:bar3:baz";
+    const DATA3: &[u8] = b"d3:foo3:barle";
+    const DATA4: &[u8] = b"d3:foo3:barde";
+    const DATA5: &[u8] = b"d3:foo3:bar  ";
+
+    super::load(DATA1).unwrap();
+    super::load(DATA2).unwrap();
+    super::load(DATA3).unwrap();
+    super::load(DATA4).unwrap();
+    super::load(DATA5).unwrap();
+}
