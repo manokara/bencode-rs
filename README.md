@@ -1,6 +1,6 @@
 # bencode
 
-Yet another library for parsing bencode. It has a focus on being able to manipulate bencode data as is (e.g. for bencode editors), so it's not zero copy like many others, but should be fairly efficient.
+Yet another library for parsing bencode. It has a focus on being able to manipulate bencode data as is (e.g. for bencode editors, like [bencedit]), so it's not zero copy like many others, but should be fairly efficient.
 
 Everything is documented, but I don't think I'm going to publish this to crates.io so you'll have to read it locally with `cargo doc`.
 
@@ -146,3 +146,4 @@ assert_eq!(buffer, DICT);
 ```
 
 [nanoserde]: https://crates.io/crates/nanoserde
+[bencedit]: https://github.com/manokara/bencedit
