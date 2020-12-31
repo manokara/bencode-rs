@@ -426,7 +426,7 @@ impl Value {
     /// [`SelectError`]: enum.SelectError.html
     /// [`Value::traverse`]: enum.Value.html#method.traverse
     pub fn select(&self, mut selector: &str) -> Result<&Value, SelectError> {
-        if selector.is_empty() {
+        if selector.is_empty() || selector == "." {
             return Ok(self);
         }
 
@@ -471,7 +471,7 @@ impl Value {
     ///
     /// See [`select`](#method.select).
     pub fn select_mut(&mut self, mut selector: &str) -> Result<&mut Value, SelectError> {
-        if selector.is_empty() {
+        if selector.is_empty() || selector == "." {
             return Ok(self);
         }
 
