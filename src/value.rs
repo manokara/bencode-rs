@@ -1062,6 +1062,18 @@ impl fmt::Display for SelectError {
     }
 }
 
+impl fmt::Display for UpdateError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UpdateError::Index => write!(f, "Index out of bounds"),
+            UpdateError::Key => write!(f, "Key doesn't exist"),
+            UpdateError::List => write!(f, "Container is a list"),
+            UpdateError::Dict => write!(f, "Container is a dictionary"),
+            UpdateError::Primitive => write!(f, "Value is a primitive"),
+        }
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         ValueDisplay::new(self).fmt(f)
