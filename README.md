@@ -10,7 +10,7 @@ Add one of the following to your `dependencies` section:
 
 ```
 # Latest release
-bencode = { git = "https://github.com/manokara/bencode-rs", rev = "v0.9.0" }
+bencode = { git = "https://github.com/manokara/bencode-rs", rev = "v0.9.1" }
 
 # Latest change
 bencode = { git = "https://github.com/manokara/bencode-rs" }
