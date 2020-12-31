@@ -11,10 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Value::push` method to add values to the end of lists.
 
-### Changed
-
-- Allow index to be equal to length in Value::insert
-
 ## [0.9.1] - 2020-12-31
 
 ### Changed
