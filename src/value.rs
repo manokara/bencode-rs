@@ -115,6 +115,21 @@ pub enum ValueAccessor<'a> {
     Key(&'a str),
 }
 
+/// An error from the [`Value::insert`] method.
+///
+/// [`Value::insert`]: enum.Value.html#method.insert
+#[derive(Debug)]
+pub enum InsertError {
+    /// Index out of bounds
+    Index,
+    /// Used a key accessor, but container is a list
+    List,
+    /// Used an index accessor, but container is a dictionary
+    Dict,
+    /// Value is not a container
+    Primitive,
+}
+
 fn repr_bytes(bytes: &[u8], truncate_at: usize) -> String {
     let mut buf = String::from("b\"");
 
@@ -288,6 +303,49 @@ impl Value {
             ValueAccessor::Index(n) => self.to_vec_mut().and_then(|v| v.get_mut(n)),
             ValueAccessor::Key(s) => self.to_map_mut().and_then(|m| m.get_mut(s)),
         }
+    }
+
+    /// Inserts `value` into this container.
+    ///
+    /// `a` is either an index or a key, depending on the type of this container.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InsertError`] on failure.
+    ///
+    /// [`InsertError`]: enum.InsertError.html
+    pub fn insert<'a, A, V>(&mut self, a: A, value: V) -> Result<(), InsertError>
+    where
+        A: Into<ValueAccessor<'a>>,
+        V: Into<Value>,
+    {
+        if !self.is_container() {
+            return Err(InsertError::Primitive);
+        }
+
+        match a.into() {
+            ValueAccessor::Index(n) => {
+                if !self.is_list() {
+                    return Err(InsertError::Dict);
+                }
+
+                if n > self.len() {
+                    return Err(InsertError::Index);
+                }
+
+                self.to_vec_mut().unwrap().insert(n, value.into());
+            }
+
+            ValueAccessor::Key(s) => {
+                if !self.is_dict()  {
+                    return Err(InsertError::List);
+                }
+
+                self.to_map_mut().unwrap().insert(s.into(), value.into());
+            }
+        }
+
+        Ok(())
     }
 
     /// Select a value inside this one if it is a container (dict or list).
@@ -1311,3 +1369,4 @@ macro_rules! impl_cmp_int {
 }
 
 impl_cmp_int!(i64 u32 i32 u16 i16 u8 i8);
+

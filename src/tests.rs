@@ -516,6 +516,23 @@ fn value_traverse() {
 }
 
 #[test]
+fn value_insert() {
+    let mut root_value = super::load(DICT_MIXED).unwrap();
+
+    root_value.insert("eureka", 7).unwrap();
+    assert_eq!(root_value.get("eureka").unwrap(), 7);
+
+    let zyx = root_value.select_mut(".zyx").unwrap();
+    zyx.insert(1, 10).unwrap();
+    zyx.insert(4, 20).unwrap();
+    assert_eq!(zyx.get(0).unwrap(), 0);
+    assert_eq!(zyx.get(1).unwrap(), 10);
+    assert_eq!(zyx.get(2).unwrap(), 1);
+    assert_eq!(zyx.get(3).unwrap(), 2);
+    assert_eq!(zyx.get(4).unwrap(), 20);
+}
+
+#[test]
 fn load_torrent() {
     let mut file = std::fs::File::open(TORRENT_PATH).unwrap();
     let root = super::load(&mut file).unwrap();
@@ -542,3 +559,4 @@ fn trailing_data() {
     super::load(DATA4).unwrap();
     super::load(DATA5).unwrap();
 }
+
