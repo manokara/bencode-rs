@@ -346,7 +346,12 @@ impl Value {
                     return Err(UpdateError::Index);
                 }
 
-                self.to_vec_mut().unwrap().insert(n, value.into());
+                if n < self.len() {
+                    self.to_vec_mut().unwrap().insert(n, value.into());
+                } else {
+                    self.to_vec_mut().unwrap().push(value.into());
+                }
+
             }
 
             ValueAccessor::Key(s) => {
