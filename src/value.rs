@@ -366,6 +366,29 @@ impl Value {
         Ok(())
     }
 
+    /// Push `value` to the end of this list.
+    ///
+    /// # Errors
+    ///
+    /// This method will fail if this value is not a list. See [`UpdateError`].
+    ///
+    /// [`UpdateError`]: enum.UpdateError.html
+    pub fn push<V>(&mut self, value: V) -> Result<(), UpdateError>
+    where
+        V: Into<Value>,
+    {
+        if !self.is_container() {
+            return Err(UpdateError::Primitive);
+        }
+
+        if !self.is_list() {
+            return Err(UpdateError::Dict);
+        }
+
+        self.to_vec_mut().unwrap().push(value.into());
+        Ok(())
+    }
+
     pub fn remove<'a, A>(&mut self, a: A) -> Result<(), UpdateError>
     where
         A: Into<ValueAccessor<'a>>,
