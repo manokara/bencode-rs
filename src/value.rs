@@ -115,13 +115,16 @@ pub enum ValueAccessor<'a> {
     Key(&'a str),
 }
 
-/// An error from the [`Value::insert`] method.
+/// An error from the [`Value::insert`] and [`Value::remove`] methods.
 ///
 /// [`Value::insert`]: enum.Value.html#method.insert
+/// [`Value::remove`]: enum.Value.html#method.remove
 #[derive(Debug)]
-pub enum InsertError {
+pub enum UpdateError {
     /// Index out of bounds
     Index,
+    /// Key does not exist
+    Key,
     /// Used a key accessor, but container is a list
     List,
     /// Used an index accessor, but container is a dictionary
@@ -305,32 +308,42 @@ impl Value {
         }
     }
 
+    /// Check is this dictionary has `key`.
+    ///
+    /// If this value is not a dictionary, it will return false.
+    pub fn has(&self, key: &str) -> bool {
+        match self {
+            Value::Dict(m) => m.contains_key(key),
+            _ => false,
+        }
+    }
+
     /// Inserts `value` into this container.
     ///
     /// `a` is either an index or a key, depending on the type of this container.
     ///
     /// # Errors
     ///
-    /// Returns [`InsertError`] on failure.
+    /// Returns [`UpdateError`] on failure.
     ///
-    /// [`InsertError`]: enum.InsertError.html
-    pub fn insert<'a, A, V>(&mut self, a: A, value: V) -> Result<(), InsertError>
+    /// [`UpdateError`]: enum.UpdateError.html
+    pub fn insert<'a, A, V>(&mut self, a: A, value: V) -> Result<(), UpdateError>
     where
         A: Into<ValueAccessor<'a>>,
         V: Into<Value>,
     {
         if !self.is_container() {
-            return Err(InsertError::Primitive);
+            return Err(UpdateError::Primitive);
         }
 
         match a.into() {
             ValueAccessor::Index(n) => {
                 if !self.is_list() {
-                    return Err(InsertError::Dict);
+                    return Err(UpdateError::Dict);
                 }
 
                 if n > self.len() {
-                    return Err(InsertError::Index);
+                    return Err(UpdateError::Index);
                 }
 
                 self.to_vec_mut().unwrap().insert(n, value.into());
@@ -338,10 +351,51 @@ impl Value {
 
             ValueAccessor::Key(s) => {
                 if !self.is_dict()  {
-                    return Err(InsertError::List);
+                    return Err(UpdateError::List);
                 }
 
                 self.to_map_mut().unwrap().insert(s.into(), value.into());
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn remove<'a, A>(&mut self, a: A) -> Result<(), UpdateError>
+    where
+        A: Into<ValueAccessor<'a>>,
+    {
+        if !self.is_container() {
+            return Err(UpdateError::Primitive);
+        }
+
+        match a.into() {
+            ValueAccessor::Index(n) => {
+                if !self.is_list() {
+                    return Err(UpdateError::Dict);
+                }
+
+                if self.len() == 0 {
+                    return Err(UpdateError::Index);
+                }
+
+                if n > self.len() -1 {
+                    return Err(UpdateError::Index);
+                }
+
+                self.to_vec_mut().unwrap().remove(n);
+            }
+
+            ValueAccessor::Key(s) => {
+                if !self.is_dict() {
+                    return Err(UpdateError::List);
+                }
+
+                if !self.has(s) {
+                    return Err(UpdateError::Key);
+                }
+
+                self.to_map_mut().unwrap().remove(s);
             }
         }
 

@@ -533,6 +533,24 @@ fn value_insert() {
 }
 
 #[test]
+fn value_remove() {
+    let mut mixed = super::load(DICT_MIXED).unwrap();
+    let mut list = super::load(LIST_VAL_INT).unwrap();
+    let mixed_final = maplit::btreemap! {
+        "foo".into() => 0.into(),
+        "bar".into() => 1.into(),
+        "baz".into() => 2.into(),
+    };
+    let list_final: Vec<Value> = vec![0.into(), 2.into()];
+
+    mixed.remove("buz").unwrap();
+    mixed.remove("zyx").unwrap();
+    list.remove(1).unwrap();
+    assert_eq!(mixed.to_map().unwrap(), &mixed_final);
+    assert_eq!(list.to_vec().unwrap(), &list_final);
+}
+
+#[test]
 fn load_torrent() {
     let mut file = std::fs::File::open(TORRENT_PATH).unwrap();
     let root = super::load(&mut file).unwrap();
