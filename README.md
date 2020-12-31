@@ -10,7 +10,7 @@ Add one of the following to your `dependencies` section:
 
 ```
 # Latest release
-bencode = { git = "https://github.com/manokara/bencode-rs", rev = "v0.8.1" }
+bencode = { git = "https://github.com/manokara/bencode-rs", rev = "v0.9.0" }
 
 # Latest change
 bencode = { git = "https://github.com/manokara/bencode-rs" }
@@ -147,3 +147,4 @@ assert_eq!(buffer, DICT);
 
 [nanoserde]: https://crates.io/crates/nanoserde
 [bencedit]: https://github.com/manokara/bencedit
+
